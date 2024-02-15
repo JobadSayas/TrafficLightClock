@@ -15,12 +15,13 @@ RTCDateTime dt;
 int greenValue;
 int yellowValue;
 int redValue;
-bool pressed = false;
-const char BUTTON_PIN = 4;
+const char lampButton = 4;
+bool lampButtonPressed = false;
 int guia = 5;
 int lampara = 6;
 int luzPrendida = 0;
-int temporizador = 0;
+float temporizador = 0;
+bool siesta = true;
 
 void setup()
 {
@@ -42,7 +43,7 @@ void setup()
   */
 
   // Setup pin modes
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(lampButton, INPUT_PULLUP);
   pinMode(lampara, OUTPUT);
   pinMode(guia, OUTPUT);
 
@@ -85,21 +86,30 @@ void loop()
   else if(dt.hour >= 12 && dt.hour < 13){
     // amarillo (12:00 a 12:59)
     yellowValue = 50;
-
   }
   else if(dt.hour >= 13 && dt.hour < 15){
     // rojo (13:00 a 14:59)
     redValue = 50;
   }
-  else if(dt.hour >= 15 && dt.hour < 19){
-    // verde (15:00 a 18:59)
+  else if(dt.hour >= 15 && dt.hour < 18){
+    // verde (15:00 a 17:59)
     greenValue = 100;
-
   }
-  else if(dt.hour >= 19 && dt.hour < 20){
+  else if(dt.hour >= 18 && dt.hour < 19 && siesta == true){
+    // amarillo (18:00 a 18:59)
+    greenValue = 100;
+  }
+  else if(dt.hour >= 18 && dt.hour < 19 && siesta == false){
+    // amarillo (18:00 a 18:59)
+    yellowValue = 255;
+  }
+  else if(dt.hour >= 19 && dt.hour < 20 && siesta == true){
     // amarillo (19:00 a 19:59)
-    // yellowValue = 200;
-    redValue = 100;
+    yellowValue = 255;
+  }
+  else if(dt.hour >= 19 && dt.hour < 20 && siesta == false){
+    // amarillo (19:00 a 19:59)
+    redValue = 200;
   }
   else if(dt.hour >= 20 && dt.hour < 21){
     // rojo (20:00 a 20:59)
@@ -123,9 +133,9 @@ void loop()
 
   analogWrite(guia, 1);
 
-  bool currentState = digitalRead(BUTTON_PIN);
+  bool lampCurrentState = digitalRead(lampButton);
 
-  if (currentState == pressed) {
+  if (lampCurrentState == lampButtonPressed) {
     Serial.println("boton presionado");
     if(luzPrendida == 0){
       luzPrendida = 1;
@@ -140,7 +150,7 @@ void loop()
 
   if(luzPrendida == 1){
     if (temporizador > 0){
-      temporizador = temporizador - 1;
+      temporizador = temporizador - .5;
       Serial.println(temporizador);
     }
     else{
