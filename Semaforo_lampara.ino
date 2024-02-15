@@ -11,9 +11,13 @@ RTCDateTime dt;
 
 int modoSemaforo = 1;
 
-int luzVerde = 9;
-int luzAmarilla = 10;
-int luzRoja = 11;
+int luzVerdeI = 9;
+int luzAmarillaI = 10;
+int luzRojaI = 11;
+
+int luzVerdeE = 8;
+int luzAmarillaE = 3;
+int luzRojaE = 2;
 
 int valorVerde;
 int valorAmarillo;
@@ -67,9 +71,13 @@ void setup()
 
   pinMode(A0, INPUT);
   
-  pinMode(luzRoja, OUTPUT);
-  pinMode(luzAmarilla, OUTPUT);
-  pinMode(luzVerde, OUTPUT);
+  pinMode(luzRojaI, OUTPUT);
+  pinMode(luzAmarillaI, OUTPUT);
+  pinMode(luzVerdeI, OUTPUT);
+
+  pinMode(luzRojaE, OUTPUT);
+  pinMode(luzAmarillaE, OUTPUT);
+  pinMode(luzVerdeE, OUTPUT);
 
   pinMode(lampara, OUTPUT);
   pinMode(luzGuia, OUTPUT);
@@ -112,58 +120,74 @@ void loop()
     valorAmarillo = 0;
     valorRojo = 0;
 
+    digitalWrite(luzRojaE, LOW);
+    digitalWrite(luzAmarillaE, LOW);
+    digitalWrite(luzVerdeE, LOW);
+
+
+
     if(dt.hour >= 0 && dt.hour < 6){
       // rojo (0:00 a 5:59)
       valorRojo = intensidadLuces;
       siesta == true;
+      digitalWrite(luzRojaE, HIGH);
     }
     else if(dt.hour >= 6 && dt.hour < 7){
       // amarillo (6:00 a 6:59)
       valorAmarillo = intensidadLuces*2;
+      digitalWrite(luzAmarillaE, HIGH);
     }
     else if(dt.hour >= 7 && dt.hour < 11){
       // verde  (7:00 a 10:59)
       valorVerde = intensidadLuces;
+      digitalWrite(luzVerdeE, HIGH);
     }
     else if(dt.hour >= 11 && dt.hour < 12){
       // amarillo (11:00 a 11:59)
       valorAmarillo = intensidadLuces*2;
+      digitalWrite(luzAmarillaE, HIGH);
     }
-    else if(dt.hour >= 12 && dt.hour < 14){
-      // rojo (12:00 a 13:59)
+    else if(dt.hour >= 12 && dt.hour < 13){
+      // rojo (12:00 a 12:59)
       valorRojo = intensidadLuces;
+      digitalWrite(luzRojaE, HIGH);
     }
-    else if(dt.hour >= 14 && dt.hour < 17){
-      // verde (14:00 a 16:59)
+    else if(dt.hour >= 13 && dt.hour < 17){
+      // verde (13:00 a 16:59)
       valorVerde = intensidadLuces;
+      digitalWrite(luzVerdeE, HIGH);
     }
     else if(dt.hour >= 17 && dt.hour < 18){ 
       // verde o amarillo (17:00 a 17:59)
       if(siesta == true){
         valorVerde = intensidadLuces;
+        digitalWrite(luzVerdeE, HIGH);
       }
       else{
         valorAmarillo = intensidadLuces*2;
+        digitalWrite(luzAmarillaE, HIGH);
       }
     }
     else if(dt.hour >= 18 && dt.hour < 19){
       // amarillo o rojo (18:00 a 18:59)
       if(siesta == true){
         valorAmarillo = intensidadLuces*2;
+        digitalWrite(luzAmarillaE, HIGH);
       }
       else{
         valorRojo = intensidadLuces;
+        digitalWrite(luzRojaE, HIGH);
       }
     }
     else if(dt.hour >= 19 && dt.hour < 24){
       // rojo (19:00 a 23:00)
       valorRojo = intensidadLuces;
+      digitalWrite(luzRojaE, HIGH);
     }
 
-
-    analogWrite(luzVerde, valorVerde);
-    analogWrite(luzAmarilla, valorAmarillo);
-    analogWrite(luzRoja, valorRojo);
+    analogWrite(luzVerdeI, valorVerde);
+    analogWrite(luzAmarillaI, valorAmarillo);
+    analogWrite(luzRojaI, valorRojo);
 
   }
 
@@ -224,15 +248,15 @@ void loop()
 
     if(siesta == true){
       siesta = false;
-      analogWrite(luzVerde, 0);
-      analogWrite(luzAmarilla, 250);
-      analogWrite(luzRoja, 100);
+      analogWrite(luzVerdeI, 0);
+      analogWrite(luzAmarillaI, 250);
+      analogWrite(luzRojaI, 100);
     }
     else{
       siesta = true;
-      analogWrite(luzVerde, 100);
-      analogWrite(luzAmarilla, 250);
-      analogWrite(luzRoja, 0);
+      analogWrite(luzVerdeI, 100);
+      analogWrite(luzAmarillaI, 250);
+      analogWrite(luzRojaI, 0);
     }
     Serial.println(siesta);
     delay(500);
