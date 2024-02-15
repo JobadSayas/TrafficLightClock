@@ -17,6 +17,10 @@ int yellowValue;
 int redValue;
 const char lampButton = 4;
 bool lampButtonPressed = false;
+const char siestaButton = 13;
+bool siestaButtonPressed = false;
+const char modoButton = 12;
+bool modoButtonPressed = false;
 int guia = 5;
 int lampara = 6;
 int luzPrendida = 0;
@@ -44,6 +48,8 @@ void setup()
 
   // Setup pin modes
   pinMode(lampButton, INPUT_PULLUP);
+  pinMode(siestaButton, INPUT_PULLUP);
+  pinMode(modoButton, INPUT_PULLUP);
   pinMode(lampara, OUTPUT);
   pinMode(guia, OUTPUT);
 
@@ -134,9 +140,9 @@ void loop()
   analogWrite(guia, 1);
 
   bool lampCurrentState = digitalRead(lampButton);
-
+  
   if (lampCurrentState == lampButtonPressed) {
-    Serial.println("boton presionado");
+    Serial.println("boton lampara presionado");
     if(luzPrendida == 0){
       luzPrendida = 1;
       temporizador = 255;
@@ -160,6 +166,30 @@ void loop()
   }
 
   analogWrite(lampara, temporizador);
+
+  // SIESTA
+
+  bool siestaCurrentState = digitalRead(siestaButton);
+
+  if (siestaCurrentState == siestaButtonPressed) {
+    Serial.println("boton siesta presionado");
+
+    if(siesta == true){
+      siesta = false;
+      analogWrite(GREEN, 0);
+      analogWrite(YELLOW, 250);
+      analogWrite(RED, 100);
+    }
+    else{
+      siesta = true;
+      analogWrite(GREEN, 100);
+      analogWrite(YELLOW, 250);
+      analogWrite(RED, 0);
+    }
+    Serial.println(siesta);
+    delay(500);
+  }
+
 
   delay(100);
 
