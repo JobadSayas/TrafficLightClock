@@ -1,5 +1,5 @@
-//www.elegoo.com
-//2018.10.24
+//Version 7.0
+
 #include <Wire.h>
 #include <DS3231.h>
 
@@ -7,9 +7,9 @@ DS3231 clock;
 RTCDateTime dt;
 
 
-// VARIABLES ----------
+// Variables
 
-int modoSemaforo = 1;
+int modo = 1;
 
 int luzVerdeI = 9;
 int luzAmarillaI = 10;
@@ -19,18 +19,17 @@ int luzVerdeE = 8;
 int luzAmarillaE = 3;
 int luzRojaE = 2;
 
-int valorVerde;
-int valorAmarillo;
-int valorRojo;
+int botonC = 4;
+bool botonCPressed = false;
 
-int lampButton = 4;
-bool lampButtonPressed = false;
+int botonB = 13;
+bool botonBPressed = false;
 
-int siestaButton = 13;
-bool siestaButtonPressed = false;
+int botonA = 12;
+int botonAPressed = 0;
 
-int modoButton = 12;
-bool modoButtonPressed = false;
+int timerSiesta = 0;
+int timerSiestaToggle = 0;
 
 int luzGuia = 5;
 int lampara = 6;
@@ -39,21 +38,58 @@ float intensidadLampara = 0;
 
 bool siesta = true;
 
-int ldr;
-int intensidadLuces;
+
+  // Funciones
+
+void reiniciarLuces(){
+  analogWrite(luzRojaI, 0);
+  analogWrite(luzAmarillaI, 0);
+  analogWrite(luzVerdeI, 0);
+
+  digitalWrite(luzRojaE, LOW);
+  digitalWrite(luzAmarillaE, LOW);
+  digitalWrite(luzVerdeE, LOW);
+}
+
+void rojo(int intensidad = 100){
+  analogWrite(luzRojaI, intensidad);
+  digitalWrite(luzRojaE, HIGH);
+}
+void soloRojo(int intensidad = 100){
+  reiniciarLuces();
+  rojo(intensidad);
+}
+
+void amarillo(int intensidad = 255){
+  analogWrite(luzAmarillaI, intensidad);
+  digitalWrite(luzAmarillaE, HIGH);
+}
+void soloAmarillo(int intensidad = 255){
+  reiniciarLuces();
+  amarillo(intensidad);
+}
+
+void verde(int intensidad = 100){
+  analogWrite(luzVerdeI, intensidad);
+  digitalWrite(luzVerdeE, HIGH);
+}
+void soloVerde(int intensidad = 100){
+  reiniciarLuces();
+  verde(intensidad);
+}
 
 
 // SETUP -----------
+void setup(){
 
-void setup()
-{
+  //INICIALIZAR ELECTRONICA
+
   Serial.begin(9600);
 
   Serial.println("Initialize RTC module");
   // Initialize DS3231
   clock.begin();
 
-  
   // Manual (YYYY, MM, DD, HH, II, SS
   // clock.setDateTime(2016, 12, 9, 11, 46, 00);
   
@@ -65,9 +101,9 @@ void setup()
   */
 
   // Setup pin modes
-  pinMode(lampButton, INPUT_PULLUP);
-  pinMode(siestaButton, INPUT_PULLUP);
-  pinMode(modoButton, INPUT_PULLUP);
+  pinMode(botonC, INPUT_PULLUP);
+  pinMode(botonB, INPUT_PULLUP);
+  pinMode(botonA, INPUT_PULLUP);
 
   pinMode(A0, INPUT);
   
@@ -90,119 +126,101 @@ void setup()
 void loop()
 {
 
-  // MODO SEMAFORO SEMAFORO ----------
+  //RELOJ
+  //Iniciar e imprimir reloj
+  dt = clock.getDateTime();
 
-  if(modoSemaforo == 1){
+  Serial.print("Raw data: ");
+  Serial.print(dt.year);   Serial.print("-");
+  Serial.print(dt.month);  Serial.print("-");
+  Serial.print(dt.day);    Serial.print(" ");
+  Serial.print(dt.hour);   Serial.print(":");
+  Serial.print(dt.minute); Serial.print(":");
+  Serial.print(dt.second); Serial.println("");
 
-    //Iniciar reloj
-    dt = clock.getDateTime();
+  //INICIADORES DEL DIA
 
-    Serial.print("Raw data: ");
-    Serial.print(dt.year);   Serial.print("-");
-    Serial.print(dt.month);  Serial.print("-");
-    Serial.print(dt.day);    Serial.print(" ");
-    Serial.print(dt.hour);   Serial.print(":");
-    Serial.print(dt.minute); Serial.print(":");
-    Serial.print(dt.second); Serial.println("");
-    
-    // Sensor luz
-    ldr = analogRead(A0);
-    
-    if(ldr < 1000){
-      intensidadLuces = 250;
-    }
-    else{
-      intensidadLuces = 3;
-    }
-
-    //Cambiar luz segun hora
-    valorVerde = 0;
-    valorAmarillo = 0;
-    valorRojo = 0;
-
-    digitalWrite(luzRojaE, LOW);
-    digitalWrite(luzAmarillaE, LOW);
-    digitalWrite(luzVerdeE, LOW);
+  if(dt.hour == 0){
+    modo = 1;
+    siesta = false;
+  }
 
 
+  // MODO CAMBIO DE LUCES POR HORA ----------
 
-    if(dt.hour >= 0 && dt.hour < 6){
-      // rojo (0:00 a 5:59)
-      valorRojo = intensidadLuces;
-      siesta == true;
-      digitalWrite(luzRojaE, HIGH);
-    }
-    else if(dt.hour >= 6 && dt.hour < 7){
-      // amarillo (6:00 a 6:59)
-      valorAmarillo = intensidadLuces*2;
-      digitalWrite(luzAmarillaE, HIGH);
-    }
-    else if(dt.hour >= 7 && dt.hour < 11){
-      // verde  (7:00 a 10:59)
-      valorVerde = intensidadLuces;
-      digitalWrite(luzVerdeE, HIGH);
-    }
-    else if(dt.hour >= 11 && dt.hour < 12){
-      // amarillo (11:00 a 11:59)
-      valorAmarillo = intensidadLuces*2;
-      digitalWrite(luzAmarillaE, HIGH);
-    }
-    else if(dt.hour >= 12 && dt.hour < 13){
-      // rojo (12:00 a 12:59)
-      valorRojo = intensidadLuces;
-      digitalWrite(luzRojaE, HIGH);
-    }
-    else if(dt.hour >= 13 && dt.hour < 17){
-      // verde (13:00 a 16:59)
-      valorVerde = intensidadLuces;
-      digitalWrite(luzVerdeE, HIGH);
-    }
-    else if(dt.hour >= 17 && dt.hour < 18){ 
-      // verde o amarillo (17:00 a 17:59)
-      if(siesta == true){
-        valorVerde = intensidadLuces;
-        digitalWrite(luzVerdeE, HIGH);
+  if(modo == 1){
+
+      if(dt.hour >= 0 && dt.hour < 6){
+        // rojo (0:00 a 5:59)
+        soloRojo(3);
       }
-      else{
-        valorAmarillo = intensidadLuces*2;
-        digitalWrite(luzAmarillaE, HIGH);
+      else if(dt.hour >= 6 && dt.hour < 7){
+        // amarillo (6:00 a 6:59)
+        soloAmarillo(10);
       }
-    }
-    else if(dt.hour >= 18 && dt.hour < 19){
-      // amarillo o rojo (18:00 a 18:59)
-      if(siesta == true){
-        valorAmarillo = intensidadLuces*2;
-        digitalWrite(luzAmarillaE, HIGH);
+      else if(dt.hour >= 7 && dt.hour < 11){
+        // verde  (7:00 a 10:59)
+        soloVerde();
       }
-      else{
-        valorRojo = intensidadLuces;
-        digitalWrite(luzRojaE, HIGH);
+      else if(dt.hour >= 11 && dt.hour < 12){
+        // amarillo (11:00 a 11:59)
+        if(siesta == false){
+          soloAmarillo();
+        }
       }
-    }
-    else if(dt.hour >= 19 && dt.hour < 24){
-      // rojo (19:00 a 23:00)
-      valorRojo = intensidadLuces;
-      digitalWrite(luzRojaE, HIGH);
-    }
-
-    analogWrite(luzVerdeI, valorVerde);
-    analogWrite(luzAmarillaI, valorAmarillo);
-    analogWrite(luzRojaI, valorRojo);
+      else if(dt.hour >= 12 && dt.hour < 13){
+        // rojo (12:00 a 12:59)
+        if(siesta == false){
+          soloRojo();
+        }
+      }
+      else if(dt.hour >= 13 && dt.hour < 17){
+        // verde (13:00 a 16:59)
+        soloVerde();
+      }
+      else if(dt.hour >= 17 && dt.hour < 18){ 
+        // verde o amarillo (17:00 a 17:59)
+        if(siesta == true){
+          soloVerde();
+        }
+        else{
+          soloAmarillo();
+        }
+      }
+      else if(dt.hour >= 18 && dt.hour < 19){
+        // amarillo o rojo (18:00 a 18:59)
+        if(siesta == true){
+          soloAmarillo();
+        }
+        else{
+          soloRojo();
+        }
+      }
+      else if(dt.hour >= 19 && dt.hour < 24){
+        // rojo (19:00 a 23:00)
+        soloRojo();
+      }
 
   }
 
 
-  // MODO JUEGO ----------
+  // MODO DORMIR (ROJO)
+  if(modo == 2){
 
-  if(modoSemaforo == 2){
-    Serial.println("modo juego");
+    soloRojo(3);
+
+    // Temporizador de siesta
+    if(dt.hour >= 11 && dt.hour < 16){
+      timerSiestaToggle = 1;
+    }
+
   }
 
+  // MODO DESPERTAR (VERDE)
+  if(modo == 3){
+    
+    soloVerde();
 
-  // MODO PARTY ----------
-
-  if(modoSemaforo == 3){
-    Serial.println("modo party");
   }
   
   
@@ -210,9 +228,9 @@ void loop()
 
   analogWrite(luzGuia, 1);
 
-  bool lampCurrentState = digitalRead(lampButton);
+  bool botonCCurrentState = digitalRead(botonC);
   
-  if (lampCurrentState == lampButtonPressed) {
+  if (botonCCurrentState == botonCPressed) {
     Serial.println("boton lampara presionado");
     if(luzPrendida == 0){
       luzPrendida = 1;
@@ -240,27 +258,88 @@ void loop()
 
 
   // SIESTA ----------
+  //Esto es solo para definir a que hora se pone amarillo o rojo
 
-  bool siestaCurrentState = digitalRead(siestaButton);
+  bool botonBCurrentState = digitalRead(botonB);
 
-  if (siestaCurrentState == siestaButtonPressed) {
+  if (botonBCurrentState == botonBPressed) {
     Serial.println("boton siesta presionado");
+
+    reiniciarLuces();
 
     if(siesta == true){
       siesta = false;
-      analogWrite(luzVerdeI, 0);
-      analogWrite(luzAmarillaI, 250);
-      analogWrite(luzRojaI, 100);
+      rojo();
+      amarillo();
     }
     else{
       siesta = true;
-      analogWrite(luzVerdeI, 100);
-      analogWrite(luzAmarillaI, 250);
-      analogWrite(luzRojaI, 0);
+      verde();
+      amarillo();
     }
     Serial.println(siesta);
     delay(500);
   }
+
+
+  // MODO DORMIR ----------
+  //Esto forza a rojo y cuenta 1 hora cuando es siesta
+
+  int botonACurrentState = digitalRead(botonA);
+  
+  if (botonACurrentState == botonAPressed) {
+
+    //cambio de modos 1 2 3 aqui
+
+    if(modo == 3){
+      modo = 0;
+    }
+
+    modo++;
+    Serial.println("Modo");
+    Serial.println(modo);
+
+    reiniciarLuces();
+    if(modo == 1){
+      rojo();
+      amarillo();
+      verde();
+    }
+    else if(modo == 2){
+      rojo();
+      amarillo();
+    }
+    else if(modo == 3){
+      amarillo();
+      verde();
+    }
+
+    delay(500);
+  }
+
+
+  // TEMPORIZADOR SIESTA
+
+  //Incrementa temporizador
+  
+  if (timerSiestaToggle == 1){
+    timerSiesta = timerSiesta + 100;
+    Serial.println(timerSiesta);
+  }
+
+  //Alto a temporizador
+  if (timerSiesta == 5400000){
+  //1000*60*60 (1 seg = 1000 * 60 seg * 90 mins)
+    
+    timerSiestaToggle = 0;
+    timerSiesta = 0;
+    siesta = true;
+    
+    soloVerde(3);
+    modo = 1;
+
+  }
+  
 
   delay(100);
 
