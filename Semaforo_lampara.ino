@@ -1,4 +1,4 @@
-//Version 7.0
+//Version 7.1
 
 #include <Wire.h>
 #include <DS3231.h>
@@ -28,8 +28,8 @@ bool botonBPressed = false;
 int botonA = 12;
 int botonAPressed = 0;
 
-int timerSiesta = 0;
-int timerSiestaToggle = 0;
+int timer = 0;
+int timerToggle = 0;
 
 int luzGuia = 5;
 int lampara = 6;
@@ -211,7 +211,28 @@ void loop()
 
     // Temporizador de siesta
     if(dt.hour >= 11 && dt.hour < 16){
-      timerSiestaToggle = 1;
+      timerToggle = 1;
+    }
+
+
+    // Temporizador siesta
+
+    //Incrementar
+    if (timerToggle == 1){
+      timer = timer + 100;
+      Serial.println(timer);
+    }
+
+    //Alto a temporizador
+    if (timer == 5400000){
+    //1000*60*60 (1 seg = 1000 * 60 seg * 90 mins)
+      
+      timerToggle = 0;
+      timer = 0;
+      siesta = true;
+      
+      soloVerde(3);
+      modo = 1;
     }
 
   }
@@ -299,6 +320,9 @@ void loop()
     Serial.println("Modo");
     Serial.println(modo);
 
+    timer = 0;
+    timerToggle = 0;
+
     reiniciarLuces();
     if(modo == 1){
       rojo();
@@ -318,28 +342,6 @@ void loop()
   }
 
 
-  // TEMPORIZADOR SIESTA
-
-  //Incrementa temporizador
-  
-  if (timerSiestaToggle == 1){
-    timerSiesta = timerSiesta + 100;
-    Serial.println(timerSiesta);
-  }
-
-  //Alto a temporizador
-  if (timerSiesta == 5400000){
-  //1000*60*60 (1 seg = 1000 * 60 seg * 90 mins)
-    
-    timerSiestaToggle = 0;
-    timerSiesta = 0;
-    siesta = true;
-    
-    soloVerde(3);
-    modo = 1;
-
-  }
-  
 
   delay(100);
 
