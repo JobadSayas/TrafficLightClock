@@ -1,4 +1,4 @@
-//Version 7.1
+//Version 8.0
 
 #include <Wire.h>
 #include <DS3231.h>
@@ -28,7 +28,7 @@ bool botonBPressed = false;
 int botonA = 12;
 int botonAPressed = 0;
 
-int timer = 0;
+long int timer = 0;
 int timerToggle = 0;
 
 int luzGuia = 5;
@@ -243,6 +243,28 @@ void loop()
     soloVerde();
 
   }
+
+
+  // MODO JUEGO
+  if(modo == 4){
+
+    timer = timer + 100;
+    Serial.println(timer);
+
+    if(timer > 0 && timer < 15000){
+      soloVerde();
+    }
+    else if(timer > 15000 && timer < 20000){
+      soloAmarillo();
+    }
+    else if(timer > 20000 && timer < 30000){
+      soloRojo();
+    }
+    else if(timer >= 30000){
+      timer = 0;
+    }
+
+  }
   
   
   // LAMPARA ----------
@@ -312,7 +334,7 @@ void loop()
 
     //cambio de modos 1 2 3 aqui
 
-    if(modo == 3){
+    if(modo == 4){
       modo = 0;
     }
 
@@ -321,7 +343,7 @@ void loop()
     Serial.println(modo);
 
     timer = 0;
-    timerToggle = 0;
+    timerToggle = 0; 
 
     reiniciarLuces();
     if(modo == 1){
@@ -329,12 +351,8 @@ void loop()
       amarillo();
       verde();
     }
-    else if(modo == 2){
+    else if(modo == 4){
       rojo();
-      amarillo();
-    }
-    else if(modo == 3){
-      amarillo();
       verde();
     }
 
