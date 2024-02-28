@@ -1,4 +1,4 @@
-//Version 8.1
+//Version 9.0
 
 #include <Wire.h>
 #include <DS3231.h>
@@ -15,24 +15,18 @@ int luzVerdeI = 9;
 int luzAmarillaI = 10;
 int luzRojaI = 11;
 
-int luzVerdeE = 8;
-int luzAmarillaE = 3;
-int luzRojaE = 2;
+int luzVerdeE = A1;
+int luzAmarillaE = A2;
+int luzRojaE = A3;
 
+int botonA = 2;
+int botonB = 3;
 int botonC = 4;
-bool botonCPressed = false;
-
-int botonB = 13;
-bool botonBPressed = false;
-
-int botonA = 12;
-int botonAPressed = 0;
 
 long int timer = 0;
 int timerToggle = 0;
 
-int luzGuia = 5;
-int lampara = 6;
+int lampara = 3;
 int luzPrendida = 0;
 float intensidadLampara = 0;
 
@@ -116,7 +110,6 @@ void setup(){
   pinMode(luzVerdeE, OUTPUT);
 
   pinMode(lampara, OUTPUT);
-  pinMode(luzGuia, OUTPUT);
 
 }
 
@@ -269,11 +262,9 @@ void loop()
   
   // LAMPARA ----------
 
-  analogWrite(luzGuia, 1);
-
   bool botonCCurrentState = digitalRead(botonC);
   
-  if (botonCCurrentState == botonCPressed) {
+  if (botonCCurrentState == LOW) {
     Serial.println("boton lampara presionado");
     if(luzPrendida == 0){
       luzPrendida = 1;
@@ -301,37 +292,37 @@ void loop()
 
 
   // SIESTA ----------
-  //Esto es solo para definir a que hora se pone amarillo o rojo
+  // Esto es solo para definir a que hora se pone amarillo o rojo
 
-  bool botonBCurrentState = digitalRead(botonB);
+  // bool botonBCurrentState = digitalRead(botonB);
 
-  if (botonBCurrentState == botonBPressed) {
-    Serial.println("boton siesta presionado");
+  // if (botonBCurrentState == LOW) {
+  //   Serial.println("boton B (siesta) presionado");
 
-    reiniciarLuces();
+  //   reiniciarLuces();
 
-    if(siesta == true){
-      siesta = false;
-      rojo();
-      amarillo();
-    }
-    else{
-      siesta = true;
-      verde();
-      amarillo();
-    }
-    Serial.println(siesta);
-    delay(500);
-  }
+  //   if(siesta == true){
+  //     siesta = false;
+  //     rojo();
+  //     amarillo();
+  //   }
+  //   else{
+  //     siesta = true;
+  //     verde();
+  //     amarillo();
+  //   }
+  //   Serial.println(siesta);
+  //   delay(500);
+  // }
 
 
   // MODO DORMIR ----------
-  //Esto forza a rojo y cuenta 1 hora cuando es siesta
+  // Esto forza a rojo y cuenta 1 hora cuando es siesta
 
   int botonACurrentState = digitalRead(botonA);
   
-  if (botonACurrentState == botonAPressed) {
-
+  if (botonACurrentState == LOW) {
+    Serial.println("boton A (modo) presionado");
     //cambio de modos 1 2 3 aqui
 
     if(modo == 4){
