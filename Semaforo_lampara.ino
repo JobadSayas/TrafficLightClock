@@ -1,4 +1,4 @@
-//Version 9.1
+//Version 9.2
 
 #include <Wire.h>
 #include <DS3231.h>
@@ -16,8 +16,8 @@ int luzAmarillaI = 10;
 int luzRojaI = 11;
 
 int luzVerdeE = A1;
-int luzAmarillaE = A2;
-int luzRojaE = A3;
+int luzAmarillaE = A3;
+int luzRojaE = A2;
 
 int botonA = 2;
 int botonB = 3;
