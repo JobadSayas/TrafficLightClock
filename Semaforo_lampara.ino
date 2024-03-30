@@ -1,4 +1,4 @@
-//Version 9.3
+//Version 9.4
 
 #include <Wire.h>
 #include <DS3231.h>
@@ -145,20 +145,20 @@ void loop()
 
   if(modo == 1){
 
-      if(dt.hour >= 0 + timeShift && dt.hour < 6 + timeShift){
-        // rojo (0:00 a 5:59)
+      if(dt.hour >= 0 + timeShift && dt.hour < 7 + timeShift){
+        // rojo (0:00 a 6:59)
         soloRojo(3);
       }
-      else if(dt.hour >= 6 + timeShift && dt.hour < 7 + timeShift){
-        // amarillo (6:00 a 6:59)
+      else if(dt.hour >= 7 + timeShift && dt.hour < 8 + timeShift){
+        // amarillo (7:00 a 7:59)
         soloAmarillo(10);
       }
-      else if(dt.hour >= 7 + timeShift && dt.hour < 8 + timeShift){
-        // verde  (7:00 a 7:59)
+      else if(dt.hour >= 8 + timeShift && dt.hour < 9 + timeShift){
+        // verde  (8:00 a 8:59)
         soloVerde(3);
       }
-      else if(dt.hour >= 8 + timeShift && dt.hour < 11 + timeShift){
-        // verde  (8:00 a 10:59)
+      else if(dt.hour >= 9 + timeShift && dt.hour < 11 + timeShift){
+        // verde  (9:00 a 10:59)
         soloVerde();
       }
       else if(dt.hour >= 11 + timeShift && dt.hour < 12 + timeShift){
@@ -173,12 +173,12 @@ void loop()
           soloRojo();
         }
       }
-      else if(dt.hour >= 13 + timeShift && dt.hour < 17 + timeShift){
-        // verde (13:00 a 16:59)
+      else if(dt.hour >= 13 + timeShift && dt.hour < 18 + timeShift){
+        // verde (13:00 a 17:59)
         soloVerde();
       }
-      else if(dt.hour >= 17 + timeShift && dt.hour < 18 + timeShift){ 
-        // verde o amarillo (17:00 a 17:59)
+      else if(dt.hour >= 18 + timeShift && dt.hour < 19 + timeShift){ 
+        // verde o amarillo (18:00 a 18:59)
         if(siesta == true){
           soloVerde();
         }
@@ -186,8 +186,8 @@ void loop()
           soloAmarillo();
         }
       }
-      else if(dt.hour >= 18 + timeShift && dt.hour < 19 + timeShift){
-        // amarillo o rojo (18:00 a 18:59)
+      else if(dt.hour >= 19 + timeShift && dt.hour < 20 + timeShift){
+        // amarillo o rojo (19:00 a 19:59)
         if(siesta == true){
           soloAmarillo();
         }
@@ -195,8 +195,8 @@ void loop()
           soloRojo();
         }
       }
-      else if(dt.hour >= 19 + timeShift && dt.hour < 24 + timeShift){
-        // rojo (19:00 a 23:00)
+      else if(dt.hour >= 20 + timeShift && dt.hour < 24 + timeShift){
+        // rojo (20:00 a 23:00)
         soloRojo();
       }
 
