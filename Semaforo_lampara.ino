@@ -90,7 +90,7 @@ void setup(){
   // clock.setDateTime(2016, 12, 9, 11, 46, 00);
   
   // Send sketch compiling time to Arduino
-  clock.setDateTime(__DATE__, __TIME__);
+  // clock.setDateTime(__DATE__, __TIME__);
   /*
   Tips:This command will be executed every time when Arduino restarts. 
        Comment this line out to store the memory of DS3231 module
