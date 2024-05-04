@@ -1,4 +1,4 @@
-//Version 9.4
+//Version 9.5
 
 #include <Wire.h>
 #include <DS3231.h>
@@ -157,24 +157,24 @@ void loop()
         // verde  (8:00 a 8:59)
         soloVerde(3);
       }
-      else if(dt.hour >= 9 + timeShift && dt.hour < 11 + timeShift){
-        // verde  (9:00 a 10:59)
+      else if(dt.hour >= 9 + timeShift && dt.hour < 12 + timeShift){
+        // verde  (9:00 a 11:59)
         soloVerde();
       }
-      else if(dt.hour >= 11 + timeShift && dt.hour < 12 + timeShift){
-        // amarillo (11:00 a 11:59)
+      else if(dt.hour >= 12 + timeShift && dt.hour < 13 + timeShift){
+        // amarillo (12:00 a 12:59)
         if(siesta == false){
           soloAmarillo();
         }
       }
-      else if(dt.hour >= 12 + timeShift && dt.hour < 13 + timeShift){
-        // rojo (12:00 a 12:59)
+      else if(dt.hour >= 13 + timeShift && dt.hour < 14 + timeShift){
+        // rojo (13:00 a 13:59)
         if(siesta == false){
           soloRojo();
         }
       }
-      else if(dt.hour >= 13 + timeShift && dt.hour < 18 + timeShift){
-        // verde (13:00 a 17:59)
+      else if(dt.hour >= 14 + timeShift && dt.hour < 18 + timeShift){
+        // verde (14:00 a 17:59)
         soloVerde();
       }
       else if(dt.hour >= 18 + timeShift && dt.hour < 19 + timeShift){ 
