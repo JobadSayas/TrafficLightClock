@@ -1,4 +1,4 @@
-//Version 9.6
+//Version 10.0
 
 #include <Wire.h>
 #include <DS3231.h>
@@ -15,9 +15,9 @@ int luzVerdeI = 9;
 int luzAmarillaI = 10;
 int luzRojaI = 11;
 
-int luzVerdeE = A1;
-int luzAmarillaE = A3;
-int luzRojaE = A2;
+// int luzVerdeE = A1;
+// int luzAmarillaE = A3;
+// int luzRojaE = A2;
 
 int botonA = 2;
 int botonB = 3;
@@ -32,8 +32,6 @@ float intensidadLampara = 0;
 
 bool siesta = true;
 
-int timeShift = -1;
-
 
   // Funciones
 
@@ -42,42 +40,36 @@ void reiniciarLuces(){
   analogWrite(luzAmarillaI, 0);
   analogWrite(luzVerdeI, 0);
 
-  digitalWrite(luzRojaE, LOW);
-  digitalWrite(luzAmarillaE, LOW);
-  digitalWrite(luzVerdeE, LOW);
+  // digitalWrite(luzRojaE, LOW);
+  // digitalWrite(luzAmarillaE, LOW);
+  // digitalWrite(luzVerdeE, LOW);
 }
 
 void rojo(int intensidad = 100){
   analogWrite(luzRojaI, intensidad);
-  digitalWrite(luzRojaE, HIGH);
-  Serial.println("ROJO");
+  // digitalWrite(luzRojaE, HIGH);
 }
 void soloRojo(int intensidad = 100){
   reiniciarLuces();
   rojo(intensidad);
-  Serial.println("SOLO ROJO");
 }
 
 void amarillo(int intensidad = 255){
   analogWrite(luzAmarillaI, intensidad);
-  digitalWrite(luzAmarillaE, HIGH);
-  Serial.println("AMARILLO");
+  // digitalWrite(luzAmarillaE, HIGH);
 }
 void soloAmarillo(int intensidad = 255){
   reiniciarLuces();
   amarillo(intensidad);
-  Serial.println("SOLO AMARILLO");
 }
 
 void verde(int intensidad = 100){
   analogWrite(luzVerdeI, intensidad);
-  digitalWrite(luzVerdeE, HIGH);
-  Serial.println("VERDE");
+  // digitalWrite(luzVerdeE, HIGH);
 }
 void soloVerde(int intensidad = 100){
   reiniciarLuces();
   verde(intensidad);
-  Serial.println("SOLO VERDE");
 }
 
 
@@ -93,12 +85,10 @@ void setup(){
   clock.begin();
 
   // Manual (YYYY, MM, DD, HH, II, SS
-  // clock.setDateTime(2024, 6, 24, 19, 15, 00);
+  // clock.setDateTime(2016, 12, 9, 11, 46, 00);
   
-  // Uncomment the following line to set the time once.
-  // Comment it out after the time is set correctly.
-  // clock.setDateTime(__DATE__, __TIME__);
-
+  // Send sketch compiling time to Arduino
+  // clock.setDateTime(__DATE__, __TIME__);    
   /*
   Tips:This command will be executed every time when Arduino restarts. 
        Comment this line out to store the memory of DS3231 module
@@ -115,9 +105,9 @@ void setup(){
   pinMode(luzAmarillaI, OUTPUT);
   pinMode(luzVerdeI, OUTPUT);
 
-  pinMode(luzRojaE, OUTPUT);
-  pinMode(luzAmarillaE, OUTPUT);
-  pinMode(luzVerdeE, OUTPUT);
+  // pinMode(luzRojaE, OUTPUT);
+  // pinMode(luzAmarillaE, OUTPUT);
+  // pinMode(luzVerdeE, OUTPUT);
 
   pinMode(lampara, OUTPUT);
 
@@ -133,7 +123,6 @@ void loop()
   //Iniciar e imprimir reloj
   dt = clock.getDateTime();
 
-  Serial.print("Raw data: ");
   Serial.print(dt.year);   Serial.print("-");
   Serial.print(dt.month);  Serial.print("-");
   Serial.print(dt.day);    Serial.print(" ");
@@ -143,7 +132,7 @@ void loop()
 
   //INICIADORES DEL DIA
 
-  if(dt.hour == 0 + timeShift){
+  if(dt.hour == 0){
     modo = 1;
     siesta = false;
   }
@@ -153,40 +142,42 @@ void loop()
 
   if(modo == 1){
 
-      if(dt.hour >= 0 + timeShift && dt.hour < 7 + timeShift){
-        // rojo (0:00 a 6:59)
+      if(dt.hour >= 0 && dt.hour < 6){
+        // rojo (0:00 a 5:59)
         soloRojo(3);
       }
-      else if(dt.hour >= 7 + timeShift && dt.hour < 8 + timeShift){
-        // amarillo (7:00 a 7:59)
+      else if(dt.hour >= 6 && dt.hour < 7){
+        // amarillo (6:00 a 6:59)
         soloAmarillo(10);
       }
-      else if(dt.hour >= 8 + timeShift && dt.hour < 9 + timeShift){
-        // verde  (8:00 a 8:59)
+      //HORA DE DESPERTAR <<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      else if(dt.hour >= 7 && dt.hour < 8){
+        // verde  (7:00 a 7:59)
         soloVerde(3);
       }
-      else if(dt.hour >= 9 + timeShift && dt.hour < 12 + timeShift){
-        // verde  (9:00 a 11:59)
+      else if(dt.hour >= 8 && dt.hour < 11){
+        // verde  (8:00 a 10:59)
         soloVerde();
       }
-      else if(dt.hour >= 12 + timeShift && dt.hour < 13 + timeShift){
-        // amarillo (12:00 a 12:59)
+      else if(dt.hour >= 11 && dt.hour < 12){
+        // amarillo (11:00 a 11:59)
         if(siesta == false){
           soloAmarillo();
         }
       }
-      else if(dt.hour >= 13 + timeShift && dt.hour < 14 + timeShift){
-        // rojo (13:00 a 13:59)
+      //HORA DE SIESTA <<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      else if(dt.hour >= 12 && dt.hour < 13){
+        // rojo (12:00 a 12:59)
         if(siesta == false){
           soloRojo();
         }
       }
-      else if(dt.hour >= 14 + timeShift && dt.hour < 18 + timeShift){
-        // verde (14:00 a 17:59)
+      else if(dt.hour >= 13 && dt.hour < 17){
+        // verde (13:00 a 16:59)
         soloVerde();
       }
-      else if(dt.hour >= 18 + timeShift && dt.hour < 19 + timeShift){ 
-        // verde o amarillo (18:00 a 18:59)
+      else if(dt.hour >= 17 && dt.hour < 18){ 
+        // verde o amarillo (17:00 a 17:59)
         if(siesta == true){
           soloVerde();
         }
@@ -194,8 +185,8 @@ void loop()
           soloAmarillo();
         }
       }
-      else if(dt.hour >= 19 + timeShift && dt.hour < 20 + timeShift){
-        // amarillo o rojo (19:00 a 19:59)
+      else if(dt.hour >= 18 && dt.hour < 19){
+        // amarillo o rojo (18:00 a 18:59)
         if(siesta == true){
           soloAmarillo();
         }
@@ -203,8 +194,9 @@ void loop()
           soloRojo();
         }
       }
-      else if(dt.hour >= 20 + timeShift && dt.hour < 24 + timeShift){
-        // rojo (20:00 a 23:00)
+      //HORA DE DORMIR <<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      else if(dt.hour >= 19 && dt.hour < 24){
+        // rojo (19:00 a 23:00)
         soloRojo();
       }
 
