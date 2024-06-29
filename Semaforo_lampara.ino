@@ -1,4 +1,4 @@
-//Version 9.5
+//Version 9.6
 
 #include <Wire.h>
 #include <DS3231.h>
@@ -32,7 +32,7 @@ float intensidadLampara = 0;
 
 bool siesta = true;
 
-int timeShift = 0;
+int timeShift = -1;
 
 
   // Funciones
@@ -50,28 +50,34 @@ void reiniciarLuces(){
 void rojo(int intensidad = 100){
   analogWrite(luzRojaI, intensidad);
   digitalWrite(luzRojaE, HIGH);
+  Serial.println("ROJO");
 }
 void soloRojo(int intensidad = 100){
   reiniciarLuces();
   rojo(intensidad);
+  Serial.println("SOLO ROJO");
 }
 
 void amarillo(int intensidad = 255){
   analogWrite(luzAmarillaI, intensidad);
   digitalWrite(luzAmarillaE, HIGH);
+  Serial.println("AMARILLO");
 }
 void soloAmarillo(int intensidad = 255){
   reiniciarLuces();
   amarillo(intensidad);
+  Serial.println("SOLO AMARILLO");
 }
 
 void verde(int intensidad = 100){
   analogWrite(luzVerdeI, intensidad);
   digitalWrite(luzVerdeE, HIGH);
+  Serial.println("VERDE");
 }
 void soloVerde(int intensidad = 100){
   reiniciarLuces();
   verde(intensidad);
+  Serial.println("SOLO VERDE");
 }
 
 
@@ -87,10 +93,12 @@ void setup(){
   clock.begin();
 
   // Manual (YYYY, MM, DD, HH, II, SS
-  // clock.setDateTime(2016, 12, 9, 11, 46, 00);
+  // clock.setDateTime(2024, 6, 24, 19, 15, 00);
   
-  // Send sketch compiling time to Arduino
+  // Uncomment the following line to set the time once.
+  // Comment it out after the time is set correctly.
   // clock.setDateTime(__DATE__, __TIME__);
+
   /*
   Tips:This command will be executed every time when Arduino restarts. 
        Comment this line out to store the memory of DS3231 module
