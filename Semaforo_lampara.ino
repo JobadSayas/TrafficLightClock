@@ -1,4 +1,4 @@
-//Version 10.0
+//Version 10.1
 
 #include <Wire.h>
 #include <DS3231.h>
@@ -151,32 +151,32 @@ void loop()
         soloAmarillo(10);
       }
       //HORA DE DESPERTAR <<<<<<<<<<<<<<<<<<<<<<<<<<<<
-      else if(dt.hour >= 7 && dt.hour < 8){
+      else if(dt.hour >= 6 && dt.hour < 7){
         // verde  (7:00 a 7:59)
         soloVerde(3);
       }
-      else if(dt.hour >= 8 && dt.hour < 11){
+      else if(dt.hour >= 7 && dt.hour < 10){
         // verde  (8:00 a 10:59)
         soloVerde();
       }
-      else if(dt.hour >= 11 && dt.hour < 12){
+      else if(dt.hour >= 10 && dt.hour < 11){
         // amarillo (11:00 a 11:59)
         if(siesta == false){
           soloAmarillo();
         }
       }
       //HORA DE SIESTA <<<<<<<<<<<<<<<<<<<<<<<<<<<<
-      else if(dt.hour >= 12 && dt.hour < 13){
+      else if(dt.hour >= 11 && dt.hour < 12){
         // rojo (12:00 a 12:59)
         if(siesta == false){
           soloRojo();
         }
       }
-      else if(dt.hour >= 13 && dt.hour < 17){
+      else if(dt.hour >= 12 && dt.hour < 16){
         // verde (13:00 a 16:59)
         soloVerde();
       }
-      else if(dt.hour >= 17 && dt.hour < 18){ 
+      else if(dt.hour >= 16 && dt.hour < 17){ 
         // verde o amarillo (17:00 a 17:59)
         if(siesta == true){
           soloVerde();
@@ -185,7 +185,7 @@ void loop()
           soloAmarillo();
         }
       }
-      else if(dt.hour >= 18 && dt.hour < 19){
+      else if(dt.hour >= 17 && dt.hour < 18){
         // amarillo o rojo (18:00 a 18:59)
         if(siesta == true){
           soloAmarillo();
@@ -195,7 +195,7 @@ void loop()
         }
       }
       //HORA DE DORMIR <<<<<<<<<<<<<<<<<<<<<<<<<<<<
-      else if(dt.hour >= 19 && dt.hour < 24){
+      else if(dt.hour >= 18 && dt.hour < 24){
         // rojo (19:00 a 23:00)
         soloRojo();
       }
