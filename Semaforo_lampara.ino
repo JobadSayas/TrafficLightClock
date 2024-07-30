@@ -1,11 +1,5 @@
-//Version 11.6
+// Version 11.8
 
-//Uncomment 4 lines below for real project <<<<<
-// #include <Wire.h>
-// #include <DS3231.h>
-
-// DS3231 clock;
-// RTCDateTime dt;
 #include <Adafruit_LiquidCrystal.h>
 
 Adafruit_LiquidCrystal lcd_1(0);
@@ -38,23 +32,16 @@ struct DateTime {
 // Create an instance of DateTime and hardcode values
 DateTime dt = {2024, 7, 30, 14, 45, 0}; // Example date and time
 
+// Function prototypes
+void updateMode();
+void updateSubMenu();
+void executeAction();
+void executeSubAction();
+void setLedBasedOnTime(int hour);
+void displayFeedback(const char* line1, const char* line2);
+void clearLCD(int line = 0);
+
 void setup() {
-
-  // Initialize DS3231
-  //Uncomment line below for real project <<<<<
-  // clock.begin();
-
-  // Manual (YYYY, MM, DD, HH, II, SS
-  // clock.setDateTime(2016, 12, 9, 11, 46, 00);
-  
-  // Send sketch compiling time to Arduino
-  // clock.setDateTime(__DATE__, __TIME__);    
-  
-  /*Tips:
-  This command will be executed every time when Arduino restarts. 
-  Comment this line out to store the memory of DS3231 module*/
-
-
   lcd_1.begin(16, 2); // Initialize the LCD with 16 columns and 2 rows
   pinMode(moveButtonPin, INPUT_PULLUP); // Use internal pull-up resistor for the move button
   pinMode(selectButtonPin, INPUT_PULLUP); // Use internal pull-up resistor for the select button
@@ -68,11 +55,6 @@ void setup() {
 }
 
 void loop() {
-  
-  //Iniciar e imprimir reloj
-  //Uncomment line below for real project <<<<<
-  // dt = clock.getDateTime();
-
   int moveButtonState = digitalRead(moveButtonPin); // Read the state of the move button
   int selectButtonState = digitalRead(selectButtonPin); // Read the state of the select button
 
@@ -93,12 +75,10 @@ void loop() {
         if (subMode == 2) {
           // Cycle through the hours for napTime
           napTime++;
-          if (napTime > 23) {
+          if (napTime > 24) {
             napTime = 1; // Reset to 1 after reaching 24
           }
-          clearLCD();
-          lcd_1.setCursor(0, 0);
-          lcd_1.print("Setting nap");
+          clearLCD(2); // Clear only the second line
           lcd_1.setCursor(0, 1);
           lcd_1.print(napTime);
           lcd_1.print(":00");
@@ -205,14 +185,15 @@ void executeAction() {
   digitalWrite(greenLedPin, LOW);
   digitalWrite(yellowLedPin, LOW);
 
-  // Perform action based on the current mode
+  // Set LED based on the current hour
+  setLedBasedOnTime(dt.hour);
+  // For Mode 1 (Sleep mode) and Mode 2 (Force wake up)
   switch(mode) {
     case 1:
-      digitalWrite(redLedPin, HIGH); // Turn on red LED for Mode 1
-      displayFeedback("Sleep mode", "Applied");
+      // For Mode 1 (Sleep mode), turn on the LED corresponding to the current hour
+      displayFeedback("Sleep mode", "Activated");
       break;
     case 2:
-      digitalWrite(greenLedPin, HIGH); // Turn on green LED for Mode 2
       displayFeedback("Force wake up", "Applied");
       break;
     case 3:
@@ -286,9 +267,13 @@ void displayFeedback(const char* line1, const char* line2) {
   lcd_1.print(line2); // Print the feedback message on the second line
 }
 
-void clearLCD() {
-  lcd_1.setCursor(0, 0);
-  lcd_1.print("                "); 
-  lcd_1.setCursor(0, 1);
-  lcd_1.print("                "); 
+void clearLCD(int line) {
+  if (line == 0 || line == 1) {
+    lcd_1.setCursor(0, 0);
+    lcd_1.print("                "); // Clear the first line
+  }
+  if (line == 0 || line == 2) {
+    lcd_1.setCursor(0, 1);
+    lcd_1.print("                "); // Clear the second line
+  }
 }
