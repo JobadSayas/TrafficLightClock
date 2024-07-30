@@ -1,4 +1,4 @@
-// Version 11.11
+// Version 11.12
 
 #include <Adafruit_LiquidCrystal.h>
 
@@ -199,12 +199,29 @@ void executeAction() {
   digitalWrite(greenLedPin, LOW);
   digitalWrite(yellowLedPin, LOW);
 
-  // Set LED based on the current hour
-  setLedBasedOnTime(dt.hour);
-  // For Mode 1 (Sleep mode)
-  lcd_1.clear();
-  lcd_1.setCursor(0, 0);
-  lcd_1.print("Sleep mode");
+  // Execute actions based on the current main mode
+  switch (mode) {
+    case 1:
+      // Sleep mode - Set the red LED on
+      digitalWrite(redLedPin, HIGH);
+      lcd_1.clear();
+      lcd_1.setCursor(0, 0);
+      lcd_1.print("Sleep mode");
+      break;
+    case 2:
+      // Force wake up - Set the green LED on
+      digitalWrite(greenLedPin, HIGH);
+      lcd_1.clear();
+      lcd_1.setCursor(0, 0);
+      lcd_1.print("Force wake up");
+      break;
+    case 3:
+      // Settings mode - Enter the submenu
+      inSubMenu = true;
+      subMode = 1;
+      updateSubMenu();
+      break;
+  }
 }
 
 void executeSubAction() {
