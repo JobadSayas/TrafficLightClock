@@ -1,4 +1,4 @@
-// Version 11.12
+// Version 11.14
 
 #include <Adafruit_LiquidCrystal.h>
 
@@ -61,8 +61,12 @@ void loop() {
   int moveButtonState = digitalRead(moveButtonPin); // Read the state of the move button
   int selectButtonState = digitalRead(selectButtonPin); // Read the state of the select button
 
+  unsigned long currentMillis = millis(); // Current time in milliseconds
+
   // Check if the move button state has changed
-  if (moveButtonState == LOW && (millis() - lastDebounceTime) > debounceDelay) {
+  if (moveButtonState == LOW && (currentMillis - lastDebounceTime) > debounceDelay) {
+    lastDebounceTime = currentMillis; // Update debounce timer
+
     if (!isLcdOn) {
       // Turn on the LCD backlight and display the initial menu
       lcd_1.setBacklight(1);
@@ -71,7 +75,6 @@ void loop() {
       lcd_1.print("Main menu");
       updateMode();
       isLcdOn = true; // Set the flag to indicate the LCD is on
-      lastButtonPressTime = millis(); // Update the last button press time
     } else if (inSubMenu) {
       if (inSubModeScreen) {
         // If in a sub-mode screen, handle hour cycling if in subMode 2
@@ -86,7 +89,6 @@ void loop() {
           lcd_1.print(currentHour);
           lcd_1.print(":00");
         }
-        lastButtonPressTime = millis(); // Update the last button press time
       } else {
         // Move to the next submenu option
         subMode++;
@@ -95,7 +97,6 @@ void loop() {
         }
         updateSubMenu();
       }
-      lastDebounceTime = millis(); // Reset the debounce timer
     } else {
       // Cycle through the main modes
       mode++;
@@ -106,13 +107,14 @@ void loop() {
       lcd_1.setCursor(0, 0); // Set cursor to the first line
       lcd_1.print("Main menu");
       updateMode(); // Update the display with the new mode
-      lastButtonPressTime = millis(); // Update the last button press time
     }
-    lastDebounceTime = millis(); // Reset the debounce timer
+    lastButtonPressTime = currentMillis; // Update the last button press time
   }
 
   // Check if the select button state has changed
-  if (selectButtonState == LOW && (millis() - lastDebounceTime) > debounceDelay) {
+  if (selectButtonState == LOW && (currentMillis - lastDebounceTime) > debounceDelay) {
+    lastDebounceTime = currentMillis; // Update debounce timer
+
     if (inSubMenu) {
       // Execute action based on the current sub-mode
       if (inSubModeScreen) {
@@ -145,15 +147,13 @@ void loop() {
         executeAction();
       }
     }
-    lastButtonPressTime = millis(); // Update the last button press time
-    lastDebounceTime = millis(); // Reset the debounce timer
+    lastButtonPressTime = currentMillis; // Update the last button press time
   }
 
   // Check if the backlight should be turned off
-  if (isLcdOn && (millis() - lastButtonPressTime) > backlightTimeout) {
+  if (isLcdOn && (currentMillis - lastButtonPressTime) > backlightTimeout) {
     lcd_1.setBacklight(0);
     isLcdOn = false; // Set the flag to indicate the LCD is off
-    // Do not turn off LEDs here
   }
 }
 
