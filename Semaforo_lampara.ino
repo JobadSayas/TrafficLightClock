@@ -1,4 +1,4 @@
-// Version 11.12
+// Version 11.13
 
 #include <Adafruit_LiquidCrystal.h>
 
@@ -102,7 +102,7 @@ void loop() {
       if (mode > 3) {
         mode = 1; // Reset to Mode 1 after Mode 3
       }
-      clearLCD();
+      clearLCD(2); // Clear only the second line
       lcd_1.setCursor(0, 0); // Set cursor to the first line
       lcd_1.print("Main menu");
       updateMode(); // Update the display with the new mode
@@ -158,6 +158,7 @@ void loop() {
 }
 
 void updateMode() {
+  clearLCD(2); // Clear only the second line
   lcd_1.setCursor(0, 1); // Set cursor to the second line
   switch(mode) {
     case 1:
@@ -204,15 +205,15 @@ void executeAction() {
     case 1:
       // Sleep mode - Set the red LED on
       digitalWrite(redLedPin, HIGH);
-      lcd_1.clear();
-      lcd_1.setCursor(0, 0);
+      clearLCD(2);
+      lcd_1.setCursor(0, 1);
       lcd_1.print("Sleep mode");
       break;
     case 2:
       // Force wake up - Set the green LED on
       digitalWrite(greenLedPin, HIGH);
-      lcd_1.clear();
-      lcd_1.setCursor(0, 0);
+      clearLCD(2);
+      lcd_1.setCursor(0, 1);
       lcd_1.print("Force wake up");
       break;
     case 3:
