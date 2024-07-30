@@ -1,4 +1,4 @@
-//Version 10.1
+//Version 11.0
 
 #include <Wire.h>
 #include <DS3231.h>
@@ -7,80 +7,9 @@ DS3231 clock;
 RTCDateTime dt;
 
 
-// Variables
-
-int modo = 1;
-
-int luzVerdeI = 9;
-int luzAmarillaI = 10;
-int luzRojaI = 11;
-
-// int luzVerdeE = A1;
-// int luzAmarillaE = A3;
-// int luzRojaE = A2;
-
-int botonA = 2;
-int botonB = 3;
-int botonC = 4;
-
-long int timer = 0;
-int timerToggle = 0;
-
-int lampara = 3;
-int luzPrendida = 0;
-float intensidadLampara = 0;
-
-bool siesta = true;
-
-
-  // Funciones
-
-void reiniciarLuces(){
-  analogWrite(luzRojaI, 0);
-  analogWrite(luzAmarillaI, 0);
-  analogWrite(luzVerdeI, 0);
-
-  // digitalWrite(luzRojaE, LOW);
-  // digitalWrite(luzAmarillaE, LOW);
-  // digitalWrite(luzVerdeE, LOW);
-}
-
-void rojo(int intensidad = 100){
-  analogWrite(luzRojaI, intensidad);
-  // digitalWrite(luzRojaE, HIGH);
-}
-void soloRojo(int intensidad = 100){
-  reiniciarLuces();
-  rojo(intensidad);
-}
-
-void amarillo(int intensidad = 255){
-  analogWrite(luzAmarillaI, intensidad);
-  // digitalWrite(luzAmarillaE, HIGH);
-}
-void soloAmarillo(int intensidad = 255){
-  reiniciarLuces();
-  amarillo(intensidad);
-}
-
-void verde(int intensidad = 100){
-  analogWrite(luzVerdeI, intensidad);
-  // digitalWrite(luzVerdeE, HIGH);
-}
-void soloVerde(int intensidad = 100){
-  reiniciarLuces();
-  verde(intensidad);
-}
-
-
 // SETUP -----------
 void setup(){
 
-  //INICIALIZAR ELECTRONICA
-
-  Serial.begin(9600);
-
-  Serial.println("Initialize RTC module");
   // Initialize DS3231
   clock.begin();
 
@@ -89,27 +18,10 @@ void setup(){
   
   // Send sketch compiling time to Arduino
   // clock.setDateTime(__DATE__, __TIME__);    
-  /*
-  Tips:This command will be executed every time when Arduino restarts. 
-       Comment this line out to store the memory of DS3231 module
-  */
-
-  // Setup pin modes
-  pinMode(botonC, INPUT_PULLUP);
-  pinMode(botonB, INPUT_PULLUP);
-  pinMode(botonA, INPUT_PULLUP);
-
-  pinMode(A0, INPUT);
   
-  pinMode(luzRojaI, OUTPUT);
-  pinMode(luzAmarillaI, OUTPUT);
-  pinMode(luzVerdeI, OUTPUT);
-
-  // pinMode(luzRojaE, OUTPUT);
-  // pinMode(luzAmarillaE, OUTPUT);
-  // pinMode(luzVerdeE, OUTPUT);
-
-  pinMode(lampara, OUTPUT);
+  /*Tips:
+  This command will be executed every time when Arduino restarts. 
+  Comment this line out to store the memory of DS3231 module*/
 
 }
 
@@ -123,241 +35,259 @@ void loop()
   //Iniciar e imprimir reloj
   dt = clock.getDateTime();
 
-  Serial.print(dt.year);   Serial.print("-");
-  Serial.print(dt.month);  Serial.print("-");
-  Serial.print(dt.day);    Serial.print(" ");
-  Serial.print(dt.hour);   Serial.print(":");
-  Serial.print(dt.minute); Serial.print(":");
-  Serial.print(dt.second); Serial.println("");
-
-  //INICIADORES DEL DIA
-
-  if(dt.hour == 0){
-    modo = 1;
-    siesta = false;
-  }
+}
 
 
-  // MODO CAMBIO DE LUCES POR HORA ----------
+// NEW CODE ------------------------------------------------
 
-  if(modo == 1){
 
-      if(dt.hour >= 0 && dt.hour < 6){
-        // rojo (0:00 a 5:59)
-        soloRojo(3);
-      }
-      else if(dt.hour >= 6 && dt.hour < 7){
-        // amarillo (6:00 a 6:59)
-        soloAmarillo(10);
-      }
-      //HORA DE DESPERTAR <<<<<<<<<<<<<<<<<<<<<<<<<<<<
-      else if(dt.hour >= 6 && dt.hour < 7){
-        // verde  (7:00 a 7:59)
-        soloVerde(3);
-      }
-      else if(dt.hour >= 7 && dt.hour < 10){
-        // verde  (8:00 a 10:59)
-        soloVerde();
-      }
-      else if(dt.hour >= 10 && dt.hour < 11){
-        // amarillo (11:00 a 11:59)
-        if(siesta == false){
-          soloAmarillo();
+#include <Adafruit_LiquidCrystal.h>
+
+Adafruit_LiquidCrystal lcd_1(0);
+int moveButtonPin = 8; // Button to move between modes
+int selectButtonPin = 7; // Button to select the mode
+int redLedPin = 11; // Red LED pin
+int greenLedPin = 9; // Green LED pin
+int yellowLedPin = 10; // Yellow LED pin
+int mode = 1; // Variable to track the current mode
+int subMode = 0; // Variable to track the current sub-mode in settings
+bool inSubMenu = false; // Flag to check if in submenu
+bool inSubModeScreen = false; // Flag to check if in a sub-mode screen
+unsigned long lastDebounceTime = 0; // Last time the button was toggled
+unsigned long debounceDelay = 50; // Debounce time in milliseconds
+unsigned long lastButtonPressTime = 0; // Last time the button was pressed
+unsigned long backlightTimeout = 10000; // Timeout for the backlight in milliseconds (10 seconds)
+bool isLcdOn = false; // Variable to track if the LCD is on
+
+// Define the DateTime struct
+struct DateTime {
+    int year;
+    int month;
+    int day;
+    int hour;
+    int minute;
+    int second;
+};
+
+// Create an instance of DateTime and hardcode values
+DateTime dt = {2024, 7, 30, 14, 45, 0}; // Example date and time
+
+void setup() {
+  lcd_1.begin(16, 2); // Initialize the LCD with 16 columns and 2 rows
+  pinMode(moveButtonPin, INPUT_PULLUP); // Use internal pull-up resistor for the move button
+  pinMode(selectButtonPin, INPUT_PULLUP); // Use internal pull-up resistor for the select button
+  pinMode(redLedPin, OUTPUT); // Set red LED pin as output
+  pinMode(greenLedPin, OUTPUT); // Set green LED pin as output
+  pinMode(yellowLedPin, OUTPUT); // Set yellow LED pin as output
+  lcd_1.setBacklight(0); // Ensure the backlight is off at the start
+
+  // Call function to set the LED based on the current hour
+  setLedBasedOnTime(dt.hour);
+}
+
+void loop() {
+  int moveButtonState = digitalRead(moveButtonPin); // Read the state of the move button
+  int selectButtonState = digitalRead(selectButtonPin); // Read the state of the select button
+
+  // Check if the move button state has changed
+  if (moveButtonState == LOW && (millis() - lastDebounceTime) > debounceDelay) {
+    if (!isLcdOn) {
+      // Turn on the LCD backlight and display the initial menu
+      lcd_1.setBacklight(1);
+      clearLCD();
+      lcd_1.setCursor(0, 0);
+      lcd_1.print("Main menu");
+      updateMode();
+      isLcdOn = true; // Set the flag to indicate the LCD is on
+      lastButtonPressTime = millis(); // Update the last button press time
+    } else if (inSubMenu) {
+      // Cycle through the submenu options
+      if (inSubModeScreen) {
+        // If in a sub-mode screen, return to the submenu
+        inSubModeScreen = false;
+        updateSubMenu();
+      } else {
+        // Move to the next submenu option
+        subMode++;
+        if (subMode > 4) {
+          subMode = 1; // Reset to subMode 1 after subMode 4
         }
+        updateSubMenu();
       }
-      //HORA DE SIESTA <<<<<<<<<<<<<<<<<<<<<<<<<<<<
-      else if(dt.hour >= 11 && dt.hour < 12){
-        // rojo (12:00 a 12:59)
-        if(siesta == false){
-          soloRojo();
-        }
+      lastButtonPressTime = millis(); // Update the last button press time
+    } else {
+      // Cycle through the main modes
+      mode++;
+      if (mode > 3) {
+        mode = 1; // Reset to Mode 1 after Mode 3
       }
-      else if(dt.hour >= 12 && dt.hour < 16){
-        // verde (13:00 a 16:59)
-        soloVerde();
+      clearLCD();
+      lcd_1.setCursor(0, 0); // Set cursor to the first line
+      lcd_1.print("Main menu");
+      updateMode(); // Update the display with the new mode
+      lastButtonPressTime = millis(); // Update the last button press time
+    }
+    lastDebounceTime = millis(); // Reset the debounce timer
+  }
+
+  // Check if the select button state has changed
+  if (selectButtonState == LOW && (millis() - lastDebounceTime) > debounceDelay) {
+    if (inSubMenu) {
+      // Execute action based on the current sub-mode
+      if (inSubModeScreen) {
+        // If already in a sub-mode screen, return to the submenu
+        inSubModeScreen = false;
+        updateSubMenu();
+      } else {
+        executeSubAction();
+        inSubModeScreen = true; // Set the flag to indicate we are in a sub-mode screen
       }
-      else if(dt.hour >= 16 && dt.hour < 17){ 
-        // verde o amarillo (17:00 a 17:59)
-        if(siesta == true){
-          soloVerde();
-        }
-        else{
-          soloAmarillo();
-        }
+    } else {
+      if (mode == 3) {
+        // Enter the submenu for settings
+        inSubMenu = true;
+        subMode = 1; // Start with the first submenu option
+        updateSubMenu();
+      } else {
+        // Execute action based on the current main mode
+        executeAction();
       }
-      else if(dt.hour >= 17 && dt.hour < 18){
-        // amarillo o rojo (18:00 a 18:59)
-        if(siesta == true){
-          soloAmarillo();
-        }
-        else{
-          soloRojo();
-        }
-      }
-      //HORA DE DORMIR <<<<<<<<<<<<<<<<<<<<<<<<<<<<
-      else if(dt.hour >= 18 && dt.hour < 24){
-        // rojo (19:00 a 23:00)
-        soloRojo();
-      }
-
+    }
+    lastButtonPressTime = millis(); // Update the last button press time
+    lastDebounceTime = millis(); // Reset the debounce timer
   }
 
-
-  // MODO DORMIR (ROJO)
-  if(modo == 2){
-
-    soloRojo(3);
-
-    // Temporizador de siesta
-    if(dt.hour >= 11 && dt.hour < 16){
-      timerToggle = 1;
-    }
-
-
-    // Temporizador siesta
-
-    //Incrementar
-    if (timerToggle == 1){
-      timer = timer + 100;
-      Serial.println(timer);
-    }
-
-    //Alto a temporizador
-    if (timer == 5400000){
-    //1000*60*60 (1 seg = 1000 * 60 seg * 90 mins)
-      
-      timerToggle = 0;
-      timer = 0;
-      siesta = true;
-      
-      soloVerde(3);
-      modo = 1;
-    }
-
+  // Check if the backlight should be turned off
+  if (isLcdOn && (millis() - lastButtonPressTime) > backlightTimeout) {
+    lcd_1.setBacklight(0);
+    isLcdOn = false; // Set the flag to indicate the LCD is off
+    // Do not turn off LEDs here
   }
+}
 
-  // MODO DESPERTAR (VERDE)
-  if(modo == 3){
-    
-    soloVerde();
-
+void updateMode() {
+  lcd_1.setCursor(0, 1); // Set cursor to the second line
+  switch(mode) {
+    case 1:
+      lcd_1.print("1. Sleep mode"); // Ensure sufficient space to overwrite previous text
+      break;
+    case 2:
+      lcd_1.print("2. Force wake up"); // Ensure sufficient space to overwrite previous text
+      break;
+    case 3:
+      lcd_1.print("3. Settings"); // Ensure sufficient space to overwrite previous text
+      break;
   }
+}
 
-
-  // MODO JUEGO
-  if(modo == 4){
-
-    timer = timer + 100;
-    Serial.println(timer);
-
-    if(timer > 0 && timer < 15000){
-      soloVerde();
-    }
-    else if(timer > 15000 && timer < 20000){
-      soloAmarillo();
-    }
-    else if(timer > 20000 && timer < 30000){
-      soloRojo();
-    }
-    else if(timer >= 30000){
-      timer = 0;
-    }
-
+void updateSubMenu() {
+  clearLCD();
+  lcd_1.setCursor(0, 0); // Set cursor to the first line
+  lcd_1.print("Settings");
+  lcd_1.setCursor(0, 1); // Set cursor to the second line
+  switch(subMode) {
+    case 1:
+      lcd_1.print("3.1 Wake up time");
+      break;
+    case 2:
+      lcd_1.print("3.2 Nap time");
+      break;
+    case 3:
+      lcd_1.print("3.3 Sleep time");
+      break;
+    case 4:
+      lcd_1.print("3.4 Exit");
+      break;
   }
-  
-  
-  // LAMPARA ----------
+}
 
-  bool botonCCurrentState = digitalRead(botonC);
-  
-  if (botonCCurrentState == LOW) {
-    Serial.println("boton lampara presionado");
-    if(luzPrendida == 0){
-      luzPrendida = 1;
-      intensidadLampara = 255;
-    }
-    else{
-      luzPrendida = 0;
-      intensidadLampara = 0;
-    }
-    delay(500);
+void executeAction() {
+  // Turn off all LEDs before setting the appropriate one
+  digitalWrite(redLedPin, LOW);
+  digitalWrite(greenLedPin, LOW);
+  digitalWrite(yellowLedPin, LOW);
+
+  // Perform action based on the current mode
+  switch(mode) {
+    case 1:
+      digitalWrite(redLedPin, HIGH); // Turn on red LED for Mode 1
+      displayFeedback("Sleep mode", "Applied");
+      break;
+    case 2:
+      digitalWrite(greenLedPin, HIGH); // Turn on green LED for Mode 2
+      displayFeedback("Force wake up", "Applied");
+      break;
+    case 3:
+      // For Mode 3 (Settings), no LED is turned on
+      inSubMenu = true;
+      updateSubMenu();
+      break;
   }
+}
 
-  if(luzPrendida == 1){
-    if (intensidadLampara > 0){
-      intensidadLampara = intensidadLampara - .5;
-      Serial.println(intensidadLampara);
-    }
-    else{
-      luzPrendida = 0;
-      intensidadLampara = 0;
-    }
+void executeSubAction() {
+  clearLCD();
+  lcd_1.setCursor(0, 0); // Set cursor to the first line
+  switch(subMode) {
+    case 1:
+      lcd_1.print("Setting wake up");
+      break;
+    case 2:
+      lcd_1.print("Setting nap time");
+      break;
+    case 3:
+      lcd_1.print("Setting sleep time");
+      break;
+    case 4:
+      // Exit the submenu and return to the main menu
+      inSubMenu = false;
+      clearLCD();
+      lcd_1.setCursor(0, 0);
+      lcd_1.print("Main menu");
+      updateMode();
+      inSubModeScreen = false; // Ensure the flag is reset
+      return; // Exit the function to avoid displaying the second line
   }
+  // Removed delay and automatic return to submenu
+}
 
-  analogWrite(lampara, intensidadLampara);
+void setLedBasedOnTime(int hour) {
+  // Turn off all LEDs before setting the appropriate one
+  digitalWrite(redLedPin, LOW);
+  digitalWrite(greenLedPin, LOW);
+  digitalWrite(yellowLedPin, LOW);
 
-
-  // SIESTA ----------
-  // Esto es solo para definir a que hora se pone amarillo o rojo
-
-  // bool botonBCurrentState = digitalRead(botonB);
-
-  // if (botonBCurrentState == LOW) {
-  //   Serial.println("boton B (siesta) presionado");
-
-  //   reiniciarLuces();
-
-  //   if(siesta == true){
-  //     siesta = false;
-  //     rojo();
-  //     amarillo();
-  //   }
-  //   else{
-  //     siesta = true;
-  //     verde();
-  //     amarillo();
-  //   }
-  //   Serial.println(siesta);
-  //   delay(500);
-  // }
-
-
-  // MODO DORMIR ----------
-  // Esto forza a rojo y cuenta 1 hora cuando es siesta
-
-  int botonACurrentState = digitalRead(botonA);
-  
-  if (botonACurrentState == LOW) {
-    Serial.println("boton A (modo) presionado");
-    //cambio de modos 1 2 3 aqui
-
-    if(modo == 4){
-      modo = 0;
-    }
-
-    modo++;
-    Serial.println("Modo");
-    Serial.println(modo);
-
-    timer = 0;
-    timerToggle = 0; 
-
-    reiniciarLuces();
-    if(modo == 1){
-      rojo();
-      amarillo();
-      verde();
-    }
-    else if(modo == 4){
-      rojo();
-      verde();
-    }
-
-    delay(500);
+  // Set LED based on the current hour
+  if (hour >= 0 && hour < 6) {
+    digitalWrite(redLedPin, HIGH); // Red LED
+  } else if (hour >= 6 && hour < 7) {
+    digitalWrite(yellowLedPin, HIGH); // Yellow LED
+  } else if (hour >= 7 && hour < 11) {
+    digitalWrite(greenLedPin, HIGH); // Green LED
+  } else if (hour >= 11 && hour < 12) {
+    digitalWrite(yellowLedPin, HIGH); // Yellow LED
+  } else if (hour >= 12 && hour < 13) {
+    digitalWrite(redLedPin, HIGH); // Red LED
+  } else if (hour >= 13 && hour < 18) {
+    digitalWrite(greenLedPin, HIGH); // Green LED
+  } else if (hour >= 18 && hour < 19) {
+    digitalWrite(yellowLedPin, HIGH); // Yellow LED
+  } else if (hour >= 19 && hour < 24) {
+    digitalWrite(redLedPin, HIGH); // Red LED
   }
+}
 
+void displayFeedback(const char* line1, const char* line2) {
+  clearLCD();
+  lcd_1.setCursor(0, 0); // Set cursor to the first line
+  lcd_1.print(line1); // Print the feedback message on the first line
+  lcd_1.setCursor(0, 1); // Set cursor to the second line
+  lcd_1.print(line2); // Print the feedback message on the second line
+}
 
-
-  delay(100);
-
+void clearLCD() {
+  lcd_1.setCursor(0, 0);
+  lcd_1.print("                "); 
+  lcd_1.setCursor(0, 1);
+  lcd_1.print("                "); 
 }
