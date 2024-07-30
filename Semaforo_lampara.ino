@@ -1,4 +1,4 @@
-//Version 11.4
+//Version 11.5
 
 //Uncomment 4 lines below for real project <<<<<
 // #include <Wire.h>
@@ -220,7 +220,10 @@ void executeSubAction() {
       lcd_1.print("Setting wake up");
       break;
     case 2:
-      lcd_1.print("Setting nap time");
+      lcd_1.print("Setting nap");
+      lcd_1.setCursor(0, 1);
+      lcd_1.print(napTime);
+      lcd_1.print(":00");
       break;
     case 3:
       lcd_1.print("Setting sleep time");
