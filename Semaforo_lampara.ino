@@ -1,4 +1,4 @@
-// Version 11.8
+// Version 11.11
 
 #include <Adafruit_LiquidCrystal.h>
 
@@ -18,6 +18,9 @@ unsigned long lastButtonPressTime = 0; // Last time the button was pressed
 unsigned long backlightTimeout = 10000; // Timeout for the backlight in milliseconds (10 seconds)
 bool isLcdOn = false; // Variable to track if the LCD is on
 int napTime = 12; // Default nap time
+
+// Variable to track the hour for cycling
+int currentHour = 12; // Default starting hour for cycling
 
 // Define the DateTime struct
 struct DateTime {
@@ -74,13 +77,13 @@ void loop() {
         // If in a sub-mode screen, handle hour cycling if in subMode 2
         if (subMode == 2) {
           // Cycle through the hours for napTime
-          napTime++;
-          if (napTime > 24) {
-            napTime = 1; // Reset to 1 after reaching 24
+          currentHour++;
+          if (currentHour > 24) {
+            currentHour = 1; // Reset to 1 after reaching 24
           }
           clearLCD(2); // Clear only the second line
           lcd_1.setCursor(0, 1);
-          lcd_1.print(napTime);
+          lcd_1.print(currentHour);
           lcd_1.print(":00");
         }
         lastButtonPressTime = millis(); // Update the last button press time
@@ -114,8 +117,19 @@ void loop() {
       // Execute action based on the current sub-mode
       if (inSubModeScreen) {
         // If already in a sub-mode screen, return to the submenu
-        inSubModeScreen = false;
-        updateSubMenu();
+        if (subMode == 2) {
+          // Save the selected nap time
+          napTime = currentHour; // Save the current hour as napTime
+          displayFeedback("Nap time", "Saved");
+          delay(2000); // Wait for 2 seconds
+          inSubMenu = true;
+          subMode = 2; // Position at 3.2 in the submenu
+          updateSubMenu(); // Update the submenu display
+          inSubModeScreen = false; // Reset the flag for sub-mode screen
+        } else {
+          inSubModeScreen = false; // Set the flag to indicate we are exiting the sub-mode screen
+          updateSubMenu();
+        }
       } else {
         executeSubAction();
         inSubModeScreen = true; // Set the flag to indicate we are in a sub-mode screen
@@ -187,41 +201,36 @@ void executeAction() {
 
   // Set LED based on the current hour
   setLedBasedOnTime(dt.hour);
-  // For Mode 1 (Sleep mode) and Mode 2 (Force wake up)
-  switch(mode) {
-    case 1:
-      // For Mode 1 (Sleep mode), turn on the LED corresponding to the current hour
-      displayFeedback("Sleep mode", "Activated");
-      break;
-    case 2:
-      displayFeedback("Force wake up", "Applied");
-      break;
-    case 3:
-      // For Mode 3 (Settings), no LED is turned on
-      inSubMenu = true;
-      updateSubMenu();
-      break;
-  }
+  // For Mode 1 (Sleep mode)
+  lcd_1.clear();
+  lcd_1.setCursor(0, 0);
+  lcd_1.print("Sleep mode");
 }
 
 void executeSubAction() {
-  clearLCD();
-  lcd_1.setCursor(0, 0); // Set cursor to the first line
+  // Handle submenu actions
   switch(subMode) {
     case 1:
-      lcd_1.print("Setting wake up");
+      // For subMode 1 (Wake up time)
       break;
     case 2:
+      // For subMode 2 (Nap time)
+      clearLCD();
+      lcd_1.setCursor(0, 0); // Set cursor to the first line
       lcd_1.print("Setting nap");
-      lcd_1.setCursor(0, 1);
-      lcd_1.print(napTime);
+      lcd_1.setCursor(0, 1); // Set cursor to the second line
+      lcd_1.print(currentHour);
       lcd_1.print(":00");
       break;
     case 3:
-      lcd_1.print("Setting sleep time");
+      // For subMode 3 (Sleep time)
       break;
     case 4:
-      // Exit the submenu and return to the main menu
+      // For subMode 4 (Exit)
+      lcd_1.clear();
+      lcd_1.setCursor(0, 0);
+      lcd_1.print("Exiting settings");
+      delay(2000); // Display for 2 seconds
       inSubMenu = false;
       clearLCD();
       lcd_1.setCursor(0, 0);
@@ -230,7 +239,6 @@ void executeSubAction() {
       inSubModeScreen = false; // Ensure the flag is reset
       return; // Exit the function to avoid displaying the second line
   }
-  // Removed delay and automatic return to submenu
 }
 
 void setLedBasedOnTime(int hour) {
