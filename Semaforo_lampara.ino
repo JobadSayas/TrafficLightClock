@@ -1,4 +1,4 @@
-//Version 11.5
+//Version 11.6
 
 //Uncomment 4 lines below for real project <<<<<
 // #include <Wire.h>
@@ -88,11 +88,22 @@ void loop() {
       isLcdOn = true; // Set the flag to indicate the LCD is on
       lastButtonPressTime = millis(); // Update the last button press time
     } else if (inSubMenu) {
-      // Cycle through the submenu options
       if (inSubModeScreen) {
-        // If in a sub-mode screen, return to the submenu
-        inSubModeScreen = false;
-        updateSubMenu();
+        // If in a sub-mode screen, handle hour cycling if in subMode 2
+        if (subMode == 2) {
+          // Cycle through the hours for napTime
+          napTime++;
+          if (napTime > 23) {
+            napTime = 1; // Reset to 1 after reaching 24
+          }
+          clearLCD();
+          lcd_1.setCursor(0, 0);
+          lcd_1.print("Setting nap");
+          lcd_1.setCursor(0, 1);
+          lcd_1.print(napTime);
+          lcd_1.print(":00");
+        }
+        lastButtonPressTime = millis(); // Update the last button press time
       } else {
         // Move to the next submenu option
         subMode++;
@@ -101,7 +112,7 @@ void loop() {
         }
         updateSubMenu();
       }
-      lastButtonPressTime = millis(); // Update the last button press time
+      lastDebounceTime = millis(); // Reset the debounce timer
     } else {
       // Cycle through the main modes
       mode++;
