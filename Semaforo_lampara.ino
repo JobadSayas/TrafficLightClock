@@ -1,4 +1,4 @@
-//Version 11.2
+//Version 11.4
 
 //Uncomment 4 lines below for real project <<<<<
 // #include <Wire.h>
@@ -23,6 +23,7 @@ unsigned long debounceDelay = 50; // Debounce time in milliseconds
 unsigned long lastButtonPressTime = 0; // Last time the button was pressed
 unsigned long backlightTimeout = 10000; // Timeout for the backlight in milliseconds (10 seconds)
 bool isLcdOn = false; // Variable to track if the LCD is on
+int napTime = 12; // Default nap time
 
 // Define the DateTime struct
 struct DateTime {
@@ -252,7 +253,7 @@ void setLedBasedOnTime(int hour) {
     digitalWrite(greenLedPin, HIGH); // Green LED
   } else if (hour >= 11 && hour < 12) {
     digitalWrite(yellowLedPin, HIGH); // Yellow LED
-  } else if (hour >= 12 && hour < 13) {
+  } else if (hour >= napTime && hour < (napTime + 1)) {
     digitalWrite(redLedPin, HIGH); // Red LED
   } else if (hour >= 13 && hour < 18) {
     digitalWrite(greenLedPin, HIGH); // Green LED
