@@ -1,46 +1,11 @@
-//Version 11.0
+//Version 11.2
 
-#include <Wire.h>
-#include <DS3231.h>
+//Uncomment 4 lines below for real project <<<<<
+// #include <Wire.h>
+// #include <DS3231.h>
 
-DS3231 clock;
-RTCDateTime dt;
-
-
-// SETUP -----------
-void setup(){
-
-  // Initialize DS3231
-  clock.begin();
-
-  // Manual (YYYY, MM, DD, HH, II, SS
-  // clock.setDateTime(2016, 12, 9, 11, 46, 00);
-  
-  // Send sketch compiling time to Arduino
-  // clock.setDateTime(__DATE__, __TIME__);    
-  
-  /*Tips:
-  This command will be executed every time when Arduino restarts. 
-  Comment this line out to store the memory of DS3231 module*/
-
-}
-
-
-// LOOP ----------
-
-void loop()
-{
-
-  //RELOJ
-  //Iniciar e imprimir reloj
-  dt = clock.getDateTime();
-
-}
-
-
-// NEW CODE ------------------------------------------------
-
-
+// DS3231 clock;
+// RTCDateTime dt;
 #include <Adafruit_LiquidCrystal.h>
 
 Adafruit_LiquidCrystal lcd_1(0);
@@ -73,6 +38,22 @@ struct DateTime {
 DateTime dt = {2024, 7, 30, 14, 45, 0}; // Example date and time
 
 void setup() {
+
+  // Initialize DS3231
+  //Uncomment line below for real project <<<<<
+  // clock.begin();
+
+  // Manual (YYYY, MM, DD, HH, II, SS
+  // clock.setDateTime(2016, 12, 9, 11, 46, 00);
+  
+  // Send sketch compiling time to Arduino
+  // clock.setDateTime(__DATE__, __TIME__);    
+  
+  /*Tips:
+  This command will be executed every time when Arduino restarts. 
+  Comment this line out to store the memory of DS3231 module*/
+
+
   lcd_1.begin(16, 2); // Initialize the LCD with 16 columns and 2 rows
   pinMode(moveButtonPin, INPUT_PULLUP); // Use internal pull-up resistor for the move button
   pinMode(selectButtonPin, INPUT_PULLUP); // Use internal pull-up resistor for the select button
@@ -86,6 +67,11 @@ void setup() {
 }
 
 void loop() {
+  
+  //Iniciar e imprimir reloj
+  //Uncomment line below for real project <<<<<
+  // dt = clock.getDateTime();
+
   int moveButtonState = digitalRead(moveButtonPin); // Read the state of the move button
   int selectButtonState = digitalRead(selectButtonPin); // Read the state of the select button
 
