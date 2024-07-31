@@ -1,4 +1,4 @@
-// Version 11.15
+// Version 11.17
 
 #include <Adafruit_LiquidCrystal.h>
 
@@ -18,7 +18,7 @@ unsigned long lastButtonPressTime = 0; // Last time the button was pressed
 unsigned long backlightTimeout = 10000; // Timeout for the backlight in milliseconds (10 seconds)
 bool isLcdOn = false; // Variable to track if the LCD is on
 int napTime = 12; // Default nap time
-int wakeupTime = 7; // Default nap time
+int wakeupTime = 7; // Default wakeup time
 
 // Variable to track the hour for cycling
 int currentHour = 12; // Default starting hour for cycling
@@ -78,9 +78,9 @@ void loop() {
       isLcdOn = true; // Set the flag to indicate the LCD is on
     } else if (inSubMenu) {
       if (inSubModeScreen) {
-        // If in a sub-mode screen, handle hour cycling if in subMode 2
-        if (subMode == 2) {
-          // Cycle through the hours for napTime
+        // If in a sub-mode screen, handle hour cycling if in subMode 1 or 2
+        if (subMode == 1 || subMode == 2) {
+          // Cycle through the hours for wakeupTime or napTime
           currentHour++;
           if (currentHour > 24) {
             currentHour = 1; // Reset to 1 after reaching 24
@@ -120,7 +120,16 @@ void loop() {
       // Execute action based on the current sub-mode
       if (inSubModeScreen) {
         // If already in a sub-mode screen, return to the submenu
-        if (subMode == 2) {
+        if (subMode == 1) {
+          // Save the selected wakeup time
+          wakeupTime = currentHour; // Save the current hour as wakeupTime
+          displayFeedback("Wake up time", "Saved");
+          delay(2000); // Wait for 2 seconds
+          inSubMenu = true;
+          subMode = 1; // Position at 3.1 in the submenu
+          updateSubMenu(); // Update the submenu display
+          inSubModeScreen = false; // Reset the flag for sub-mode screen
+        } else if (subMode == 2) {
           // Save the selected nap time
           napTime = currentHour; // Save the current hour as napTime
           displayFeedback("Nap time", "Saved");
@@ -230,6 +239,13 @@ void executeSubAction() {
   switch(subMode) {
     case 1:
       // For subMode 1 (Wake up time)
+      clearLCD();
+      lcd_1.setCursor(0, 0); // Set cursor to the first line
+      lcd_1.print("Setting wake up");
+      lcd_1.setCursor(0, 1); // Set cursor to the second line
+      lcd_1.print(wakeupTime);
+      lcd_1.print(":00");
+      currentHour = wakeupTime; // Initialize the current hour with wakeupTime
       break;
     case 2:
       // For subMode 2 (Nap time)
@@ -237,8 +253,9 @@ void executeSubAction() {
       lcd_1.setCursor(0, 0); // Set cursor to the first line
       lcd_1.print("Setting nap");
       lcd_1.setCursor(0, 1); // Set cursor to the second line
-      lcd_1.print(currentHour);
+      lcd_1.print(napTime);
       lcd_1.print(":00");
+      currentHour = napTime; // Initialize the current hour with napTime
       break;
     case 3:
       // For subMode 3 (Sleep time)
