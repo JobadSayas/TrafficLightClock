@@ -1,4 +1,4 @@
-// Version 11.18
+// Version 11.19
 
 #include <Adafruit_LiquidCrystal.h>
 
@@ -79,9 +79,9 @@ void loop() {
       isLcdOn = true; // Set the flag to indicate the LCD is on
     } else if (inSubMenu) {
       if (inSubModeScreen) {
-        // If in a sub-mode screen, handle hour cycling if in subMode 1 or 2
-        if (subMode == 1 || subMode == 2) {
-          // Cycle through the hours for wakeupTime or napTime
+        // If in a sub-mode screen, handle hour cycling if in subMode 1, 2, or 3
+        if (subMode == 1 || subMode == 2 || subMode == 3) {
+          // Cycle through the hours for wakeupTime, napTime, or sleepTime
           currentHour++;
           if (currentHour > 24) {
             currentHour = 1; // Reset to 1 after reaching 24
@@ -137,6 +137,15 @@ void loop() {
           delay(2000); // Wait for 2 seconds
           inSubMenu = true;
           subMode = 2; // Position at 3.2 in the submenu
+          updateSubMenu(); // Update the submenu display
+          inSubModeScreen = false; // Reset the flag for sub-mode screen
+        } else if (subMode == 3) {
+          // Save the selected sleep time
+          sleepTime = currentHour; // Save the current hour as sleepTime
+          displayFeedback("Sleep time", "Saved");
+          delay(2000); // Wait for 2 seconds
+          inSubMenu = true;
+          subMode = 3; // Position at 3.3 in the submenu
           updateSubMenu(); // Update the submenu display
           inSubModeScreen = false; // Reset the flag for sub-mode screen
         } else {
@@ -260,6 +269,13 @@ void executeSubAction() {
       break;
     case 3:
       // For subMode 3 (Sleep time)
+      clearLCD();
+      lcd_1.setCursor(0, 0); // Set cursor to the first line
+      lcd_1.print("Setting sleep");
+      lcd_1.setCursor(0, 1); // Set cursor to the second line
+      lcd_1.print(sleepTime);
+      lcd_1.print(":00");
+      currentHour = sleepTime; // Initialize the current hour with sleepTime
       break;
     case 4:
       // For subMode 4 (Exit)
