@@ -1,4 +1,4 @@
-// Version 11.20
+// Version 11.21
 
 #include <Adafruit_LiquidCrystal.h>
 
@@ -216,15 +216,15 @@ void updateSubMenu() {
 
 void executeAction() {
   // Turn off all LEDs before setting the appropriate one
-  digitalWrite(redLedPin, LOW);
-  digitalWrite(greenLedPin, LOW);
-  digitalWrite(yellowLedPin, LOW);
+  red(0);
+  yellow(0);
+  green(0);
 
   // Execute actions based on the current main mode
   switch (mode) {
     case 1:
       // Sleep mode - Set the red LED on
-      digitalWrite(redLedPin, HIGH);
+      red(3);
       lcd_1.clear();
       lcd_1.setCursor(0, 0);
       lcd_1.print("Sleep mode");
@@ -233,7 +233,7 @@ void executeAction() {
       break;
     case 2:
       // Force wake up - Set the green LED on
-      digitalWrite(greenLedPin, HIGH);
+      green();
       lcd_1.clear();
       lcd_1.setCursor(0, 0);
       lcd_1.print("Force wake up");
@@ -298,29 +298,29 @@ void executeSubAction() {
 
 void setLedBasedOnTime(int hour) {
   // Turn off all LEDs before setting the appropriate one
-  digitalWrite(redLedPin, LOW);
-  digitalWrite(greenLedPin, LOW);
-  digitalWrite(yellowLedPin, LOW);
+  red(0);
+  yellow(0);
+  green(0);
 
   // Set LED based on the current hour
   if (hour >= 0 && hour < (wakeupTime - 1)) {
-    digitalWrite(redLedPin, HIGH); // Red LED
+    red(3);
   } else if (hour >= (wakeupTime - 1) && hour < wakeupTime) {
-    digitalWrite(yellowLedPin, HIGH); // Yellow LED
+    yellow(10);
   } else if (hour >= wakeupTime && hour < (wakeupTime + 1)) {
-    digitalWrite(greenLedPin, HIGH); // Green LED
+    green(3);
   } else if (hour >= (wakeupTime + 1) && hour < (napTime - 1)) {
-    digitalWrite(greenLedPin, HIGH); // Green LED
+    green();
   } else if (hour >= (napTime - 1) && hour < napTime) {
-    digitalWrite(yellowLedPin, HIGH); // Yellow LED
+    yellow();
   } else if (hour >= napTime && hour < (napTime + 1)) {
-    digitalWrite(redLedPin, HIGH); // Red LED
+    red();
   } else if (hour >= (napTime + 1) && hour < (sleepTime - 1)) {
-    digitalWrite(greenLedPin, HIGH); // Green LED
+    green();
   } else if (hour >= (sleepTime - 1) && hour < sleepTime) {
-    digitalWrite(yellowLedPin, HIGH); // Yellow LED
+    yellow();
   } else if (hour >= sleepTime && hour < 24) {
-    digitalWrite(redLedPin, HIGH); // Red LED
+    red();
   }
 }
 
@@ -346,4 +346,17 @@ void clearLCD(int line) {
 void returnToLedBasedOnTime() {
   // Call setLedBasedOnTime with the current hour
   setLedBasedOnTime(dt.hour);
+}
+
+// Functions to set LED brightness
+void red(int brightness = 100) {
+  analogWrite(redLedPin, brightness);
+}
+
+void yellow(int brightness = 255) {
+  analogWrite(yellowLedPin, brightness);
+}
+
+void green(int brightness = 100) {
+  analogWrite(greenLedPin, brightness);
 }
