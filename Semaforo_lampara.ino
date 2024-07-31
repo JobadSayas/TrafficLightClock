@@ -1,4 +1,4 @@
-// Version 11.14
+// Version 11.15
 
 #include <Adafruit_LiquidCrystal.h>
 
@@ -18,6 +18,7 @@ unsigned long lastButtonPressTime = 0; // Last time the button was pressed
 unsigned long backlightTimeout = 10000; // Timeout for the backlight in milliseconds (10 seconds)
 bool isLcdOn = false; // Variable to track if the LCD is on
 int napTime = 12; // Default nap time
+int wakeupTime = 7; // Default nap time
 
 // Variable to track the hour for cycling
 int currentHour = 12; // Default starting hour for cycling
@@ -267,9 +268,9 @@ void setLedBasedOnTime(int hour) {
   // Set LED based on the current hour
   if (hour >= 0 && hour < 6) {
     digitalWrite(redLedPin, HIGH); // Red LED
-  } else if (hour >= 6 && hour < 7) {
+  } else if (hour >= (wakeupTime - 1) && hour < wakeupTime) {
     digitalWrite(yellowLedPin, HIGH); // Yellow LED
-  } else if (hour >= 7 && hour < 11) {
+  } else if (hour >= wakeupTime && hour < 11) {
     digitalWrite(greenLedPin, HIGH); // Green LED
   } else if (hour >= 11 && hour < 12) {
     digitalWrite(yellowLedPin, HIGH); // Yellow LED
