@@ -1,4 +1,4 @@
-// Version 11.17
+// Version 11.18
 
 #include <Adafruit_LiquidCrystal.h>
 
@@ -19,6 +19,7 @@ unsigned long backlightTimeout = 10000; // Timeout for the backlight in millisec
 bool isLcdOn = false; // Variable to track if the LCD is on
 int napTime = 12; // Default nap time
 int wakeupTime = 7; // Default wakeup time
+int sleepTime = 19; // Default sleep time
 
 // Variable to track the hour for cycling
 int currentHour = 12; // Default starting hour for cycling
@@ -283,21 +284,23 @@ void setLedBasedOnTime(int hour) {
   digitalWrite(yellowLedPin, LOW);
 
   // Set LED based on the current hour
-  if (hour >= 0 && hour < 6) {
+  if (hour >= 0 && hour < (wakeupTime - 1)) {
     digitalWrite(redLedPin, HIGH); // Red LED
   } else if (hour >= (wakeupTime - 1) && hour < wakeupTime) {
     digitalWrite(yellowLedPin, HIGH); // Yellow LED
-  } else if (hour >= wakeupTime && hour < 11) {
+  } else if (hour >= wakeupTime && hour < (wakeupTime + 1)) {
     digitalWrite(greenLedPin, HIGH); // Green LED
-  } else if (hour >= 11 && hour < 12) {
+  } else if (hour >= (wakeupTime + 1) && hour < (napTime - 1)) {
+    digitalWrite(greenLedPin, HIGH); // Green LED
+  } else if (hour >= (napTime - 1) && hour < napTime) {
     digitalWrite(yellowLedPin, HIGH); // Yellow LED
   } else if (hour >= napTime && hour < (napTime + 1)) {
     digitalWrite(redLedPin, HIGH); // Red LED
-  } else if (hour >= 13 && hour < 18) {
+  } else if (hour >= (napTime + 1) && hour < (sleepTime - 1)) {
     digitalWrite(greenLedPin, HIGH); // Green LED
-  } else if (hour >= 18 && hour < 19) {
+  } else if (hour >= (sleepTime - 1) && hour < sleepTime) {
     digitalWrite(yellowLedPin, HIGH); // Yellow LED
-  } else if (hour >= 19 && hour < 24) {
+  } else if (hour >= sleepTime && hour < 24) {
     digitalWrite(redLedPin, HIGH); // Red LED
   }
 }
