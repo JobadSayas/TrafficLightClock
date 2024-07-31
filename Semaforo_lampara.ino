@@ -1,4 +1,4 @@
-// Version 11.19
+// Version 11.20
 
 #include <Adafruit_LiquidCrystal.h>
 
@@ -45,6 +45,7 @@ void executeSubAction();
 void setLedBasedOnTime(int hour);
 void displayFeedback(const char* line1, const char* line2);
 void clearLCD(int line = 0);
+void returnToLedBasedOnTime();
 
 void setup() {
   lcd_1.begin(16, 2); // Initialize the LCD with 16 columns and 2 rows
@@ -227,6 +228,8 @@ void executeAction() {
       lcd_1.clear();
       lcd_1.setCursor(0, 0);
       lcd_1.print("Sleep mode");
+      delay(5400000); // Wait for 1.5 hours
+      returnToLedBasedOnTime();
       break;
     case 2:
       // Force wake up - Set the green LED on
@@ -338,4 +341,9 @@ void clearLCD(int line) {
     lcd_1.setCursor(0, 1);
     lcd_1.print("                "); // Clear the second line
   }
+}
+
+void returnToLedBasedOnTime() {
+  // Call setLedBasedOnTime with the current hour
+  setLedBasedOnTime(dt.hour);
 }
