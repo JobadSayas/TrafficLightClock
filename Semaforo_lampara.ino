@@ -1,11 +1,8 @@
-// Version 11.22
+// Version 11.24
 
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 LiquidCrystal_I2C lcd_1(0x27, 16, 2);
-
-// #include <Adafruit_LiquidCrystal.h>
-// Adafruit_LiquidCrystal lcd_1(0);
 
 int moveButtonPin = 8; // Button to move between modes
 int selectButtonPin = 7; // Button to select the mode
@@ -16,7 +13,8 @@ int mode = 1; // Variable to track the current mode
 int subMode = 0; // Variable to track the current sub-mode in settings
 bool inSubMenu = false; // Flag to check if in submenu
 bool inSubModeScreen = false; // Flag to check if in a sub-mode screen
-unsigned long lastDebounceTime = 0; // Last time the button was toggled
+unsigned long lastDebounceTimeMove = 0; // Last time the move button was toggled
+unsigned long lastDebounceTimeSelect = 0; // Last time the select button was toggled
 unsigned long debounceDelay = 50; // Debounce time in milliseconds
 unsigned long lastButtonPressTime = 0; // Last time the button was pressed
 unsigned long backlightTimeout = 10000; // Timeout for the backlight in milliseconds (10 seconds)
@@ -41,6 +39,12 @@ struct DateTime {
 // Create an instance of DateTime and hardcode values
 DateTime dt = {2024, 7, 30, 14, 45, 0}; // Example date and time
 
+// Variables to track button states and state changes
+bool lastMoveButtonState = HIGH;
+bool lastSelectButtonState = HIGH;
+bool moveButtonPressed = false;
+bool selectButtonPressed = false;
+
 // Function prototypes
 void updateMode();
 void updateSubMenu();
@@ -53,7 +57,6 @@ void returnToLedBasedOnTime();
 void red(int brightness = 100);
 void yellow(int brightness = 255);
 void green(int brightness = 100);
-
 
 void setup() {
   lcd_1.begin(16, 2); // Initialize the LCD with 16 columns and 2 rows
@@ -74,110 +77,33 @@ void loop() {
 
   unsigned long currentMillis = millis(); // Current time in milliseconds
 
-  // Check if the move button state has changed
-  if (moveButtonState == LOW && (currentMillis - lastDebounceTime) > debounceDelay) {
-    lastDebounceTime = currentMillis; // Update debounce timer
-
-    if (!isLcdOn) {
-      // Turn on the LCD backlight and display the initial menu
-      lcd_1.setBacklight(1);
-      clearLCD();
-      lcd_1.setCursor(0, 0);
-      lcd_1.print("Main menu");
-      updateMode();
-      isLcdOn = true; // Set the flag to indicate the LCD is on
-    } else if (inSubMenu) {
-      if (inSubModeScreen) {
-        // If in a sub-mode screen, handle hour cycling if in subMode 1, 2, or 3
-        if (subMode == 1 || subMode == 2 || subMode == 3) {
-          // Cycle through the hours for wakeupTime, napTime, or sleepTime
-          currentHour++;
-          if (currentHour > 24) {
-            currentHour = 1; // Reset to 1 after reaching 24
-          }
-          clearLCD(2); // Clear only the second line
-          lcd_1.setCursor(0, 1);
-          lcd_1.print(currentHour);
-          lcd_1.print(":00");
-        }
-      } else {
-        // Move to the next submenu option
-        subMode++;
-        if (subMode > 4) {
-          subMode = 1; // Reset to subMode 1 after subMode 4
-        }
-        updateSubMenu();
-      }
-    } else {
-      // Cycle through the main modes
-      mode++;
-      if (mode > 3) {
-        mode = 1; // Reset to Mode 1 after Mode 3
-      }
-      clearLCD();
-      lcd_1.setCursor(0, 0); // Set cursor to the first line
-      lcd_1.print("Main menu");
-      updateMode(); // Update the display with the new mode
-    }
-    lastButtonPressTime = currentMillis; // Update the last button press time
+  // Debouncing for move button
+  if (moveButtonState != lastMoveButtonState) {
+    lastDebounceTimeMove = currentMillis;
   }
-
-  // Check if the select button state has changed
-  if (selectButtonState == LOW && (currentMillis - lastDebounceTime) > debounceDelay) {
-    lastDebounceTime = currentMillis; // Update debounce timer
-
-    if (inSubMenu) {
-      // Execute action based on the current sub-mode
-      if (inSubModeScreen) {
-        // If already in a sub-mode screen, return to the submenu
-        if (subMode == 1) {
-          // Save the selected wakeup time
-          wakeupTime = currentHour; // Save the current hour as wakeupTime
-          displayFeedback("Wake up time", "Saved");
-          delay(2000); // Wait for 2 seconds
-          inSubMenu = true;
-          subMode = 1; // Position at 3.1 in the submenu
-          updateSubMenu(); // Update the submenu display
-          inSubModeScreen = false; // Reset the flag for sub-mode screen
-        } else if (subMode == 2) {
-          // Save the selected nap time
-          napTime = currentHour; // Save the current hour as napTime
-          displayFeedback("Nap time", "Saved");
-          delay(2000); // Wait for 2 seconds
-          inSubMenu = true;
-          subMode = 2; // Position at 3.2 in the submenu
-          updateSubMenu(); // Update the submenu display
-          inSubModeScreen = false; // Reset the flag for sub-mode screen
-        } else if (subMode == 3) {
-          // Save the selected sleep time
-          sleepTime = currentHour; // Save the current hour as sleepTime
-          displayFeedback("Sleep time", "Saved");
-          delay(2000); // Wait for 2 seconds
-          inSubMenu = true;
-          subMode = 3; // Position at 3.3 in the submenu
-          updateSubMenu(); // Update the submenu display
-          inSubModeScreen = false; // Reset the flag for sub-mode screen
-        } else {
-          inSubModeScreen = false; // Set the flag to indicate we are exiting the sub-mode screen
-          updateSubMenu();
-        }
-      } else {
-        executeSubAction();
-        inSubModeScreen = true; // Set the flag to indicate we are in a sub-mode screen
-      }
-    } else {
-      if (mode == 3) {
-        // Enter the submenu for settings
-        inSubMenu = true;
-        subMode = 1; // Start with the first submenu option
-        updateSubMenu();
-      } else {
-        // Execute action based on the current main mode
-        executeAction();
-      }
+  if ((currentMillis - lastDebounceTimeMove) > debounceDelay) {
+    if (moveButtonState == LOW && !moveButtonPressed) {
+      moveButtonPressed = true;
+      handleMoveButtonPress();
+    } else if (moveButtonState == HIGH && moveButtonPressed) {
+      moveButtonPressed = false;
     }
-    lastButtonPressTime = currentMillis; // Update the last button press time
   }
+  lastMoveButtonState = moveButtonState;
+
+  // Debouncing for select button
+  if (selectButtonState != lastSelectButtonState) {
+    lastDebounceTimeSelect = currentMillis;
+  }
+  if ((currentMillis - lastDebounceTimeSelect) > debounceDelay) {
+    if (selectButtonState == LOW && !selectButtonPressed) {
+      selectButtonPressed = true;
+      handleSelectButtonPress();
+    } else if (selectButtonState == HIGH && selectButtonPressed) {
+      selectButtonPressed = false;
+    }
+  }
+  lastSelectButtonState = selectButtonState;
 
   // Check if the backlight should be turned off
   if (isLcdOn && (currentMillis - lastButtonPressTime) > backlightTimeout) {
@@ -186,9 +112,106 @@ void loop() {
   }
 }
 
+void handleMoveButtonPress() {
+  unsigned long currentMillis = millis(); // Current time in milliseconds
+
+  if (!isLcdOn) {
+    // Turn on the LCD backlight and display the initial menu
+    lcd_1.setBacklight(1);
+    clearLCD();
+    lcd_1.setCursor(0, 0);
+    lcd_1.print("Main menu");
+    updateMode();
+    isLcdOn = true; // Set the flag to indicate the LCD is on
+  } else if (inSubMenu) {
+    if (inSubModeScreen) {
+      // If in a sub-mode screen, handle hour cycling if in subMode 1, 2, or 3
+      if (subMode == 1 || subMode == 2 || subMode == 3) {
+        // Cycle through the hours for wakeupTime, napTime, or sleepTime
+        currentHour++;
+        if (currentHour > 24) {
+          currentHour = 1; // Reset to 1 after reaching 24
+        }
+        clearLCD(2); // Clear only the second line
+        lcd_1.setCursor(0, 1);
+        lcd_1.print(currentHour);
+        lcd_1.print(":00");
+      }
+    } else {
+      // Move to the next submenu option
+      subMode++;
+      if (subMode > 4) {
+        subMode = 1; // Reset to subMode 1 after subMode 4
+      }
+      updateSubMenu();
+    }
+  } else {
+    // Cycle through the main modes
+    mode++;
+    if (mode > 3) {
+      mode = 1; // Reset to Mode 1 after Mode 3
+    }
+    clearLCD();
+    lcd_1.setCursor(0, 0); // Set cursor to the first line
+    lcd_1.print("Main menu");
+    updateMode(); // Update the display with the new mode
+  }
+  lastButtonPressTime = currentMillis; // Update the last button press time
+}
+
+void handleSelectButtonPress() {
+  unsigned long currentMillis = millis(); // Current time in milliseconds
+
+  if (inSubMenu) {
+    // Execute action based on the current sub-mode
+    if (inSubModeScreen) {
+      // If already in a sub-mode screen, return to the submenu
+      if (subMode == 1) {
+        // Save the selected wakeup time
+        wakeupTime = currentHour; // Save the current hour as wakeupTime
+        displayFeedback("Wake up time", "Saved");
+        delay(2000); // Wait for 2 seconds
+        inSubMenu = true;
+        subMode = 1; // Position at 3.1 in the submenu
+        updateSubMenu(); // Update the submenu display
+        inSubModeScreen = false; // Reset the flag for sub-mode screen
+      } else if (subMode == 2) {
+        // Save the selected nap time
+        napTime = currentHour; // Save the current hour as napTime
+        displayFeedback("Nap time", "Saved");
+        delay(2000); // Wait for 2 seconds
+        inSubMenu = true;
+        subMode = 2; // Position at 3.2 in the submenu
+        updateSubMenu(); // Update the submenu display
+        inSubModeScreen = false; // Reset the flag for sub-mode screen
+      } else if (subMode == 3) {
+        // Save the selected sleep time
+        sleepTime = currentHour; // Save the current hour as sleepTime
+        displayFeedback("Sleep time", "Saved");
+        delay(2000); // Wait for 2 seconds
+        inSubMenu = true;
+        subMode = 3; // Position at 3.3 in the submenu
+        updateSubMenu(); // Update the submenu display
+        inSubModeScreen = false; // Reset the flag for sub-mode screen
+      } else {
+        inSubModeScreen = false; // Set the flag to indicate we are exiting the sub-mode screen
+        updateSubMenu();
+      }
+    } else {
+      executeSubAction();
+      inSubModeScreen = true; // Set the flag to indicate we are in a sub-mode screen
+    }
+  } else {
+    // Execute action based on the current main mode
+    executeAction();
+  }
+  lastButtonPressTime = currentMillis; // Update the last button press time
+}
+
 void updateMode() {
+  clearLCD(2); // Clear only the second line
   lcd_1.setCursor(0, 1); // Set cursor to the second line
-  switch(mode) {
+  switch (mode) {
     case 1:
       lcd_1.print("1. Sleep mode"); // Ensure sufficient space to overwrite previous text
       break;
