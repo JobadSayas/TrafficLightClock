@@ -1,8 +1,12 @@
-// Version 11.21
+// Version 11.22
 
-#include <Adafruit_LiquidCrystal.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd_1(0x27, 16, 2);
 
-Adafruit_LiquidCrystal lcd_1(0);
+// #include <Adafruit_LiquidCrystal.h>
+// Adafruit_LiquidCrystal lcd_1(0);
+
 int moveButtonPin = 8; // Button to move between modes
 int selectButtonPin = 7; // Button to select the mode
 int redLedPin = 11; // Red LED pin
@@ -46,6 +50,10 @@ void setLedBasedOnTime(int hour);
 void displayFeedback(const char* line1, const char* line2);
 void clearLCD(int line = 0);
 void returnToLedBasedOnTime();
+void red(int brightness = 100);
+void yellow(int brightness = 255);
+void green(int brightness = 100);
+
 
 void setup() {
   lcd_1.begin(16, 2); // Initialize the LCD with 16 columns and 2 rows
