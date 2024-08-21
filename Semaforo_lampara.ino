@@ -1,4 +1,4 @@
-// Version 12.15
+// Version 12.16
 
 #include <Wire.h>
 #include <U8g2lib.h>
@@ -48,8 +48,8 @@ void loop() {
   u8g2.setDrawColor(1);  // Establecer color de dibujo a blanco
   u8g2.drawStr(0, 67, "_____________________________");  // Dibujar el mensaje
 
-  // u8g2.drawBox(0, 69, 128, 23);  // Dibujar cuadro blanco que cubre la parte superior (encabezado)
-  // u8g2.setDrawColor(0);  // Establecer color de dibujo a blanco
+  u8g2.drawBox(0, 69, 128, 23);  // Dibujar cuadro blanco que cubre la parte superior (encabezado)
+  u8g2.setDrawColor(0);  // Establecer color de dibujo a blanco
 
   u8g2.drawStr(20, 79, "Clock");  // Dibujar el mensaje
   u8g2.drawStr(20, 89, "mode");  // Dibujar el mensaje
@@ -59,8 +59,8 @@ void loop() {
   u8g2.setDrawColor(1);  // Establecer color de dibujo a blanco
   u8g2.drawStr(0, 91, "_____________________________");  // Dibujar el mensaje
 
-  u8g2.drawBox(0, 93, 128, 19);  // Dibujar cuadro blanco que cubre la parte superior (encabezado)
-  u8g2.setDrawColor(0);  // Establecer color de dibujo a blanco
+  // u8g2.drawBox(0, 93, 128, 19);  // Dibujar cuadro blanco que cubre la parte superior (encabezado)
+  // u8g2.setDrawColor(0);  // Establecer color de dibujo a blanco
 
   u8g2.drawStr(2, 106, "Settings");  // Dibujar el mensaje
 
