@@ -1,10 +1,10 @@
-//Version 14.0
+//Version 14.1
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
 
 //Horarios
-const int ajusteMinutos = 15;
+const int ajusteMinutos = 45;
 
 // Pines de conexión de los LEDs
 const int ledVerde = 9;
