@@ -1,10 +1,10 @@
-//Version 14.1
+//Version 14.2
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
 
 //Horarios
-const int ajusteMinutos = 45;
+const int ajusteMinutos = 0;
 
 // Pines de conexión de los LEDs
 const int ledVerde = 9;
@@ -53,12 +53,9 @@ void setup() {
     while (1);
   }
 
-  // Verifica si el RTC está funcionando
-  if (rtc.lostPower()) {
-    Serial.println("El RTC perdió la energía, configurando la hora.");
-    // Configura el RTC con la hora actual solo la primera vez
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  }
+  // Configura el RTC con la hora actual directamente
+  // rtc.adjust(DateTime(2024, 10, 14, 6, 52, 0)); // Año, Mes, Día, Hora, Minuto, Segundo
+  // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
 
   // Configura los pines de los LEDs como salida
   pinMode(ledVerde, OUTPUT);
