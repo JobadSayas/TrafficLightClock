@@ -1,4 +1,4 @@
-//Version 14.2
+//Version 15.0
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -134,29 +134,32 @@ void loop() {
 
   if (!botonPresionado) {
     // Control de LEDs según el horario establecido
-    if ((hora >= 0 && hora < 6) || (hora == 6 && minuto < ajusteMinutos)) {
-      // 12:00 am a 6:15 am - Luz roja tenue
-      setLuz(ledRojo, intensidadRojoTenue);
-    } else if ((hora == 6 && minuto >= ajusteMinutos) || (hora == 7 && minuto < ajusteMinutos)) {
-      // 6:15 am a 7:15 am - Luz amarilla tenue
+    if (hora == 6 && minuto >= 45 && minuto <= 59) {
+      // 6:45 am a 6:59 am - Luz amarilla tenue
       setLuz(ledAmarillo, intensidadAmarilloTenue);
-    } else if ((hora == 7 && minuto >= ajusteMinutos) || (hora < 12 || (hora == 12 && minuto < ajusteMinutos))) {
-      // 7:15 am a 12:15 pm - Luz verde máxima
+    } 
+    else if (hora >= 7 && hora < 12) {
+      // 7:00 am a 12:00 pm - Luz verde máxima
       setLuz(ledVerde, intensidadVerdeMax);
-    } else if ((hora == 12 && minuto >= ajusteMinutos) || (hora == 13 && minuto < ajusteMinutos)) {
-      // 12:15 pm a 1:15 pm - Luz amarilla máxima
+    } 
+    else if (hora == 12 && minuto >= 0 && minuto < 30) {
+      // 12:00 pm a 12:30 pm - Luz amarilla máxima
       setLuz(ledAmarillo, intensidadAmarilloMax);
-    } else if ((hora == 13 && minuto >= ajusteMinutos) || (hora == 14 && minuto < ajusteMinutos)) {
-      // 1:15 pm a 2:15 pm - Luz roja máxima
+    } 
+    else if ((hora == 12 && minuto >= 30) || (hora == 13 && minuto < 30)) {
+      // 12:30 pm a 1:30 pm - Luz roja máxima
       setLuz(ledRojo, intensidadRojoMax);
-    } else if ((hora == 14 && minuto >= ajusteMinutos) || (hora < 19 || (hora == 19 && minuto < ajusteMinutos))) {
-      // 2:15 pm a 7:15 pm - Luz verde máxima
+    } 
+    else if ((hora == 13 && minuto >= 30) || (hora > 13 && hora < 19) || (hora == 19 && minuto < 30)) {
+      // 1:30 pm a 7:00 pm - Luz verde máxima
       setLuz(ledVerde, intensidadVerdeMax);
-    } else if ((hora == 19 && minuto >= ajusteMinutos) || (hora == 20 && minuto < ajusteMinutos)) {
-      // 7:15 pm a 8:15 pm - Luz amarilla máxima
+    } 
+    else if (hora == 19 && minuto >= 30) {
+      // 7:30 pm a 8:00 pm - Luz amarilla máxima
       setLuz(ledAmarillo, intensidadAmarilloMax);
-    } else if ((hora == 20 && minuto >= ajusteMinutos) || (hora >= 21 && hora < 24)) {
-      // 8:15 pm a 12:00 am - Luz roja máxima
+    } 
+    else if ((hora >= 20 && hora < 24) || (hora >= 0 && hora < 6) || (hora == 6 && minuto < 45)) { 
+      // 8:00 pm a 11:59 pm o 12:00 am a 5:59 am o hasta las 6:44 am - Luz roja máxima
       setLuz(ledRojo, intensidadRojoMax);
     }
   }
