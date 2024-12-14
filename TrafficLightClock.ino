@@ -1,4 +1,4 @@
-//Version 15.0
+//Version 16.0
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -158,9 +158,13 @@ void loop() {
       // 7:30 pm a 8:00 pm - Luz amarilla máxima
       setLuz(ledAmarillo, intensidadAmarilloMax);
     } 
-    else if ((hora >= 20 && hora < 24) || (hora >= 0 && hora < 6) || (hora == 6 && minuto < 45)) { 
-      // 8:00 pm a 11:59 pm o 12:00 am a 5:59 am o hasta las 6:44 am - Luz roja máxima
-      setLuz(ledRojo, intensidadRojoMax);
+    else if ((hora >= 20 && hora < 24)) {
+    // 8:00 pm a 11:59 pm - Luz roja máxima
+    setLuz(ledRojo, intensidadRojoMax);
+    } 
+    else if ((hora >= 0 && hora < 6) || (hora == 6 && minuto < 45)) {
+      // 12:00 am a 6:44 am - Luz roja tenue
+      setLuz(ledRojo, intensidadRojoTenue);
     }
   }
 
