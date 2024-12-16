@@ -1,10 +1,12 @@
-//Version 17.0
+//Version 18.0
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
 
 //Horarios
-const int ajusteMinutos = 0;
+int horaDespertar[2] = {7, 0}; // 7:30 am
+int horaSiesta[2] = {12, 30};    // 1:00 pm
+int horaDormir[2] = {20, 0};    // 8:00 pm
 
 // Pines de conexión de los LEDs
 const int ledVerde = 9;
@@ -132,47 +134,47 @@ void loop() {
     }
   }
 
+  //Control de LEDs usando horarios configurables
   if (!botonPresionado) {
-    // Control de LEDs según el horario establecido
-    if (hora == 6 && minuto >= 45 && minuto <= 59) {
-      // 6:45 am a 6:59 am - Luz amarilla tenue
-      setLuz(ledAmarillo, intensidadAmarilloTenue);
-    } 
-    else if (hora >= 7 && hora < 8) {
-      // 7:00 am a 12:00 pm - Luz verde máxima
-      setLuz(ledVerde, intensidadVerdeTenue);
-    }
-    else if (hora >= 8 && hora < 12) {
-      // 7:00 am a 12:00 pm - Luz verde máxima
-      setLuz(ledVerde, intensidadVerdeMax);
-    }
-    else if (hora == 12 && minuto >= 0 && minuto < 30) {
-      // 12:00 pm a 12:30 pm - Luz amarilla máxima
-      setLuz(ledAmarillo, intensidadAmarilloMax);
-    } 
-    else if ((hora == 12 && minuto >= 30) || (hora == 13 && minuto < 30)) {
-      // 12:30 pm a 1:30 pm - Luz roja máxima
-      setLuz(ledRojo, intensidadRojoMax);
-    } 
-    else if ((hora == 13 && minuto >= 30) && (hora < 14 || (hora == 14 && minuto < 30))) {
-      // 1:30 pm a 2:30 pm - Luz verde tenue
-      setLuz(ledVerde, intensidadVerdeTenue);
-    }
-    else if ((hora >= 14 && minuto >= 30) || (hora > 14 && hora < 19)) {
-      // 2:30 pm a 7:00 pm - Luz verde máxima
-      setLuz(ledVerde, intensidadVerdeMax);
-    }
-    else if (hora == 19 && minuto >= 30) {
-      // 7:30 pm a 8:00 pm - Luz amarilla máxima
-      setLuz(ledAmarillo, intensidadAmarilloMax);
-    } 
-    else if ((hora >= 20 && hora < 24)) {
-    // 8:00 pm a 11:59 pm - Luz roja máxima
-    setLuz(ledRojo, intensidadRojoMax);
-    } 
-    else if ((hora >= 0 && hora < 6) || (hora == 6 && minuto < 45)) {
-      // 12:00 am a 6:44 am - Luz roja tenue
+    // Rojo tenue: desde la medianoche hasta 15 mins antes de despertar
+    if ((hora < horaDespertar[0]) || (hora == horaDespertar[0] && minuto < (horaDespertar[1] - 15))) {
       setLuz(ledRojo, intensidadRojoTenue);
+    }
+    // Amarillo tenue: desde 15 mins antes de despertar hasta la hora de despertar
+    else if ((hora == horaDespertar[0] && minuto >= (horaDespertar[1] - 15)) && (hora == horaDespertar[0] && minuto < horaDespertar[1])) {
+      setLuz(ledAmarillo, intensidadAmarilloTenue);
+    }
+    // Verde tenue: desde la hora de despertar hasta 60 mins después
+    else if ((hora == horaDespertar[0] && minuto >= horaDespertar[1]) || (hora == horaDespertar[0] + 1 && minuto < horaDespertar[1])) {
+      setLuz(ledVerde, intensidadVerdeTenue);
+    }
+    // Verde intenso: desde 60 mins después de despertar hasta 30 mins antes de la siesta
+    else if ((hora > horaDespertar[0] + 1) && (hora < horaSiesta[0] || (hora == horaSiesta[0] && minuto < (horaSiesta[1] - 30)))) {
+      setLuz(ledVerde, intensidadVerdeMax);
+    }
+    // Amarillo máximo: 30 mins antes de la siesta
+    else if ((hora == horaSiesta[0] && minuto >= (horaSiesta[1] - 30)) && (hora == horaSiesta[0] && minuto < horaSiesta[1])) {
+      setLuz(ledAmarillo, intensidadAmarilloMax);
+    }
+    // Rojo máximo: durante la siesta
+    else if ((hora == horaSiesta[0] && minuto >= horaSiesta[1]) || (hora == horaSiesta[0] + 1 && minuto < horaSiesta[1])) {
+      setLuz(ledRojo, intensidadRojoMax);
+    }
+    // Verde tenue: 60-90 mins después de la siesta
+    else if ((hora == horaSiesta[0] + 1 && minuto >= horaSiesta[1]) || (hora == horaSiesta[0] + 1 && minuto < (horaSiesta[1] + 30))) {
+      setLuz(ledVerde, intensidadVerdeTenue);
+    }
+    // Verde intenso: desde 90 mins después de la siesta hasta 30 mins antes de dormir
+    else if ((hora > horaSiesta[0] + 1 && minuto >= (horaSiesta[1] + 30)) && (hora < horaDormir[0] || (hora == horaDormir[0] && minuto < (horaDormir[1] - 30)))) {
+      setLuz(ledVerde, intensidadVerdeMax);
+    }
+    // Amarillo máximo: 30 mins antes de dormir
+    else if ((hora == horaDormir[0] && minuto >= (horaDormir[1] - 30)) && (hora == horaDormir[0] && minuto < horaDormir[1])) {
+      setLuz(ledAmarillo, intensidadAmarilloMax);
+    }
+    // Rojo intenso: desde la hora de dormir hasta las 11:59 pm
+    else if ((hora >= horaDormir[0] && hora < 24)) {
+      setLuz(ledRojo, intensidadRojoMax);
     }
   }
 
@@ -195,3 +197,4 @@ void setLuz(int pin, int intensidad) {
     analogWrite(ledRojo, 0);
   }
 }
+
