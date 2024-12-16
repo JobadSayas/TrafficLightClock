@@ -1,4 +1,4 @@
-//Version 16.0
+//Version 17.0
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -23,12 +23,12 @@ DateTime horaInicioSiesta;
 const int duracionSiesta = 90; // 90 minutos de siesta
 
 // Intensidades actualizadas para equilibrar la percepción visual
-const int intensidadVerdeMax = 100;
 const int intensidadRojoMax = 100;
 const int intensidadAmarilloMax = 255;
-const int intensidadVerdeTenue = 3;
+const int intensidadVerdeMax = 100;
 const int intensidadRojoTenue = 3;
 const int intensidadAmarilloTenue = 10;
+const int intensidadVerdeTenue = 3;
 
 // Instancia del módulo RTC
 RTC_DS3231 rtc;
@@ -138,10 +138,14 @@ void loop() {
       // 6:45 am a 6:59 am - Luz amarilla tenue
       setLuz(ledAmarillo, intensidadAmarilloTenue);
     } 
-    else if (hora >= 7 && hora < 12) {
+    else if (hora >= 7 && hora < 8) {
+      // 7:00 am a 12:00 pm - Luz verde máxima
+      setLuz(ledVerde, intensidadVerdeTenue);
+    }
+    else if (hora >= 8 && hora < 12) {
       // 7:00 am a 12:00 pm - Luz verde máxima
       setLuz(ledVerde, intensidadVerdeMax);
-    } 
+    }
     else if (hora == 12 && minuto >= 0 && minuto < 30) {
       // 12:00 pm a 12:30 pm - Luz amarilla máxima
       setLuz(ledAmarillo, intensidadAmarilloMax);
@@ -150,10 +154,14 @@ void loop() {
       // 12:30 pm a 1:30 pm - Luz roja máxima
       setLuz(ledRojo, intensidadRojoMax);
     } 
-    else if ((hora == 13 && minuto >= 30) || (hora > 13 && hora < 19) || (hora == 19 && minuto < 30)) {
-      // 1:30 pm a 7:00 pm - Luz verde máxima
+    else if ((hora == 13 && minuto >= 30) && (hora < 14 || (hora == 14 && minuto < 30))) {
+      // 1:30 pm a 2:30 pm - Luz verde tenue
+      setLuz(ledVerde, intensidadVerdeTenue);
+    }
+    else if ((hora >= 14 && minuto >= 30) || (hora > 14 && hora < 19)) {
+      // 2:30 pm a 7:00 pm - Luz verde máxima
       setLuz(ledVerde, intensidadVerdeMax);
-    } 
+    }
     else if (hora == 19 && minuto >= 30) {
       // 7:30 pm a 8:00 pm - Luz amarilla máxima
       setLuz(ledAmarillo, intensidadAmarilloMax);
