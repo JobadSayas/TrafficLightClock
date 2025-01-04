@@ -1,4 +1,4 @@
-//Version 19.0
+String version = "19.1";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -107,6 +107,7 @@ void loop() {
     // Limpiar la pantalla y mostrar mensaje
     oled.clear();
     oled.println("    " + String(hora) + ":" + String(minuto));  // Imprime el texto en la pantalla
+    oled.println("    v" + version);
   }
 
   // Verifica el estado del botón
