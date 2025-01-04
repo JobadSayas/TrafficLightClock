@@ -1,9 +1,11 @@
-String version = "19.1";
+String version = "19.2";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
 #include <SSD1306Ascii.h>
 #include <SSD1306AsciiWire.h>
+
+String status = "s";
 
 //Horarios
 const int ajusteMinutos = 0;
@@ -108,6 +110,7 @@ void loop() {
     oled.clear();
     oled.println("    " + String(hora) + ":" + String(minuto));  // Imprime el texto en la pantalla
     oled.println("    v" + version);
+    oled.println("    " + status);
   }
 
   // Verifica el estado del botón
@@ -161,42 +164,52 @@ void loop() {
     if (hora == 6 && minuto >= 45 && minuto <= 59) {
       // 6:45 am a 6:59 am - Luz amarilla tenue
       setLuz(ledAmarillo, intensidadAmarilloTenue);
+      status = "amarillo low";
     } 
     else if (hora >= 7 && hora < 8) {
       // 7:00 am a 12:00 pm - Luz verde máxima
       setLuz(ledVerde, intensidadVerdeTenue);
+      status = "verde low";
     }
     else if (hora >= 8 && hora < 12) {
       // 7:00 am a 12:00 pm - Luz verde máxima
       setLuz(ledVerde, intensidadVerdeMax);
+      status = "verde max";
     }
     else if (hora == 12 && minuto >= 0 && minuto < 30) {
       // 12:00 pm a 12:30 pm - Luz amarilla máxima
       setLuz(ledAmarillo, intensidadAmarilloMax);
+      status = "amarillo max";
     } 
     else if ((hora == 12 && minuto >= 30) || (hora == 13 && minuto < 30)) {
       // 12:30 pm a 1:30 pm - Luz roja máxima
       setLuz(ledRojo, intensidadRojoMax);
+      status = "rojo max";
     } 
     else if ((hora == 13 && minuto >= 30) && (hora < 14 || (hora == 14 && minuto < 30))) {
       // 1:30 pm a 2:30 pm - Luz verde tenue
       setLuz(ledVerde, intensidadVerdeTenue);
+      status = "verde low";
     }
     else if ((hora >= 14 && minuto >= 30) || (hora > 14 && hora < 19)) {
       // 2:30 pm a 7:00 pm - Luz verde máxima
       setLuz(ledVerde, intensidadVerdeMax);
+      status = "verde max";
     }
     else if (hora == 19 && minuto >= 30) {
       // 7:30 pm a 8:00 pm - Luz amarilla máxima
       setLuz(ledAmarillo, intensidadAmarilloMax);
+      status = "amarillo max";
     } 
     else if ((hora >= 20 && hora < 24)) {
-    // 8:00 pm a 11:59 pm - Luz roja máxima
-    setLuz(ledRojo, intensidadRojoMax);
+      // 8:00 pm a 11:59 pm - Luz roja máxima
+      setLuz(ledRojo, intensidadRojoMax);
+      status = "rojo max";
     } 
     else if ((hora >= 0 && hora < 6) || (hora == 6 && minuto < 45)) {
       // 12:00 am a 6:44 am - Luz roja tenue
       setLuz(ledRojo, intensidadRojoTenue);
+      status = "rojo low";
     }
   }
 
