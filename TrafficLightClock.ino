@@ -1,7 +1,9 @@
-//Version 17.0
+//Version 19.0
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
+#include <SSD1306Ascii.h>
+#include <SSD1306AsciiWire.h>
 
 //Horarios
 const int ajusteMinutos = 0;
@@ -43,6 +45,14 @@ int estadoBotonAnterior = LOW;
 // Variable para almacenar el último minuto impreso
 int ultimoMinutoImpreso = -1;
 
+
+// Crear una instancia del objeto SSD1306Ascii con comunicación I2C
+SSD1306AsciiWire oled;  
+
+// Dirección I2C de la pantalla (puede ser 0x3C o 0x3D dependiendo del modelo)
+#define OLED_ADDRESS 0x3C  
+
+
 void setup() {
   // Inicializa la comunicación serial
   Serial.begin(9600);
@@ -64,6 +74,15 @@ void setup() {
 
   // Configura el pin del botón como entrada con resistencia pull-up interna
   pinMode(botonPin, INPUT_PULLUP);
+
+
+  // Inicializar la comunicación I2C
+  Wire.begin();
+
+  // Inicializar la pantalla OLED
+  oled.begin(&Adafruit128x64, OLED_ADDRESS);  // Usamos un controlador de pantalla estándar
+  oled.setFont(Arial_14);  // Establece la fuente, puedes elegir otras fuentes también
+
 }
 
 void loop() {
@@ -84,6 +103,10 @@ void loop() {
 
     // Actualiza el último minuto impreso
     ultimoMinutoImpreso = minuto;
+
+    // Limpiar la pantalla y mostrar mensaje
+    oled.clear();
+    oled.println("    " + String(hora) + ":" + String(minuto));  // Imprime el texto en la pantalla
   }
 
   // Verifica el estado del botón
