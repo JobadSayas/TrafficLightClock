@@ -1,4 +1,4 @@
-String version = "19.2";
+String version = "19.4";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -161,55 +161,35 @@ void loop() {
 
   if (!botonPresionado) {
     // Control de LEDs según el horario establecido
-    if (hora == 6 && minuto >= 45 && minuto <= 59) {
-      // 6:45 am a 6:59 am - Luz amarilla tenue
-      setLuz(ledAmarillo, intensidadAmarilloTenue);
-      status = "amarillo low";
+    if (hora == 7 && minuto >= 15 && minuto < 30) {
+        // 7:15 am a 7:30 am - Luz amarilla tenue
+        setLuz(ledAmarillo, intensidadAmarilloTenue);
+        status = "amarillo low (C1)";
     } 
-    else if (hora >= 7 && hora < 8) {
-      // 7:00 am a 12:00 pm - Luz verde máxima
-      setLuz(ledVerde, intensidadVerdeTenue);
-      status = "verde low";
-    }
-    else if (hora >= 8 && hora < 12) {
-      // 7:00 am a 12:00 pm - Luz verde máxima
-      setLuz(ledVerde, intensidadVerdeMax);
-      status = "verde max";
-    }
-    else if (hora == 12 && minuto >= 0 && minuto < 30) {
-      // 12:00 pm a 12:30 pm - Luz amarilla máxima
-      setLuz(ledAmarillo, intensidadAmarilloMax);
-      status = "amarillo max";
+    else if ((hora == 7 && minuto >= 30) || (hora == 8 && minuto < 0)) {
+        // 7:30 am a 8:00 am - Luz verde tenue
+        setLuz(ledVerde, intensidadVerdeTenue);
+        status = "verde low (C2)";
     } 
-    else if ((hora == 12 && minuto >= 30) || (hora == 13 && minuto < 30)) {
-      // 12:30 pm a 1:30 pm - Luz roja máxima
-      setLuz(ledRojo, intensidadRojoMax);
-      status = "rojo max";
+    else if (hora >= 8 && hora < 19) {
+        // 8:00 am a 7:00 pm - Luz verde intensa
+        setLuz(ledVerde, intensidadVerdeMax);
+        status = "verde max (C3)";
     } 
-    else if ((hora == 13 && minuto >= 30) && (hora < 14 || (hora == 14 && minuto < 30))) {
-      // 1:30 pm a 2:30 pm - Luz verde tenue
-      setLuz(ledVerde, intensidadVerdeTenue);
-      status = "verde low";
-    }
-    else if ((hora >= 14 && minuto >= 30) || (hora > 14 && hora < 19)) {
-      // 2:30 pm a 7:00 pm - Luz verde máxima
-      setLuz(ledVerde, intensidadVerdeMax);
-      status = "verde max";
-    }
-    else if (hora == 19 && minuto >= 30) {
-      // 7:30 pm a 8:00 pm - Luz amarilla máxima
-      setLuz(ledAmarillo, intensidadAmarilloMax);
-      status = "amarillo max";
+    else if (hora == 19 && minuto < 30) {
+        // 7:00 pm a 7:30 pm - Luz amarilla intensa
+        setLuz(ledAmarillo, intensidadAmarilloMax);
+        status = "amarillo max (C4)";
     } 
-    else if ((hora >= 20 && hora < 24)) {
-      // 8:00 pm a 11:59 pm - Luz roja máxima
-      setLuz(ledRojo, intensidadRojoMax);
-      status = "rojo max";
+    else if ((hora == 19 && minuto >= 30) || (hora >= 20 && hora < 24)) {
+        // 7:30 pm a 11:59 pm - Luz roja intensa
+        setLuz(ledRojo, intensidadRojoMax);
+        status = "rojo max (C5)";
     } 
-    else if ((hora >= 0 && hora < 6) || (hora == 6 && minuto < 45)) {
-      // 12:00 am a 6:44 am - Luz roja tenue
-      setLuz(ledRojo, intensidadRojoTenue);
-      status = "rojo low";
+    else if ((hora >= 0 && hora < 7) || (hora == 7 && minuto < 15)) {
+        // 12:00 am a 7:14 am - Luz roja tenue
+        setLuz(ledRojo, intensidadRojoTenue);
+        status = "rojo low (C6)";
     }
   }
 
