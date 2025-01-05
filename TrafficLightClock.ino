@@ -1,4 +1,4 @@
-String version = "19.4";
+String version = "19.5";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -161,38 +161,37 @@ void loop() {
 
   if (!botonPresionado) {
     // Control de LEDs según el horario establecido
-    if (hora == 7 && minuto >= 15 && minuto < 30) {
-        // 7:15 am a 7:30 am - Luz amarilla tenue
+    if (hora == 6 && minuto >= 45 && minuto < 60) {
+        // 6:45 am a 6:59 am - Luz amarilla tenue
         setLuz(ledAmarillo, intensidadAmarilloTenue);
         status = "amarillo low (C1)";
     } 
-    else if ((hora == 7 && minuto >= 30) || (hora == 8 && minuto < 0)) {
-        // 7:30 am a 8:00 am - Luz verde tenue
+    else if (hora == 7 && minuto >= 0 && minuto < 60) {
+        // 7:00 am a 7:59 am - Luz verde tenue
         setLuz(ledVerde, intensidadVerdeTenue);
         status = "verde low (C2)";
     } 
-    else if (hora >= 8 && hora < 19) {
-        // 8:00 am a 7:00 pm - Luz verde intensa
+    else if (hora >= 8 && hora < 18 && minuto < 30) {
+        // 8:00 am a 6:29 pm - Luz verde intensa
         setLuz(ledVerde, intensidadVerdeMax);
         status = "verde max (C3)";
     } 
-    else if (hora == 19 && minuto < 30) {
-        // 7:00 pm a 7:30 pm - Luz amarilla intensa
+    else if (hora == 18 && minuto >= 30 && minuto < 60) {
+        // 6:30 pm a 6:59 pm - Luz amarilla intensa
         setLuz(ledAmarillo, intensidadAmarilloMax);
         status = "amarillo max (C4)";
     } 
-    else if ((hora == 19 && minuto >= 30) || (hora >= 20 && hora < 24)) {
-        // 7:30 pm a 11:59 pm - Luz roja intensa
+    else if ((hora == 19 && minuto >= 0) || (hora >= 20 && hora < 24)) {
+        // 7:00 pm a 11:59 pm - Luz roja intensa
         setLuz(ledRojo, intensidadRojoMax);
         status = "rojo max (C5)";
     } 
-    else if ((hora >= 0 && hora < 7) || (hora == 7 && minuto < 15)) {
-        // 12:00 am a 7:14 am - Luz roja tenue
+    else if ((hora >= 0 && hora < 6) || (hora == 6 && minuto < 45)) {
+        // 12:00 am a 6:44 am - Luz roja tenue
         setLuz(ledRojo, intensidadRojoTenue);
         status = "rojo low (C6)";
     }
   }
-
 
   delay(100); // Pequeño retardo para evitar rebotes del botón
 }
