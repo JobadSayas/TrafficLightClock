@@ -5,7 +5,7 @@ String version = "19.2";
 #include <SSD1306Ascii.h>
 #include <SSD1306AsciiWire.h>
 
-String status = "s";
+String status = "--";
 
 //Horarios
 const int ajusteMinutos = 0;
