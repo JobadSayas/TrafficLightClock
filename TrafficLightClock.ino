@@ -1,4 +1,4 @@
-String version = "19.8";
+String version = "19.9";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -158,7 +158,8 @@ void loop() {
     }
   }
 
-  if (!botonPresionado) {
+
+if (!botonPresionado) {
     // Control de LEDs según el horario establecido
     if (hora == 6 && minuto >= 45 && minuto < 60) {
         // 6:45 am a 6:59 am - Luz amarilla tenue
@@ -180,17 +181,17 @@ void loop() {
         setLuz(ledAmarillo, intensidadAmarilloMax);
         status = "amarillo max (C4)";
     } 
-    else if (hora >= 19 && hora < 24) {
-        // 7:00 pm a 11:59 pm - Luz roja intensa
+    else if (hora >= 20 && hora < 24) {
+        // 8:00 pm to 11:59 pm - Luz roja intensa
         setLuz(ledRojo, intensidadRojoMax);
         status = "rojo max (C5)";
     } 
     else if ((hora >= 0 && hora < 6) || (hora == 6 && minuto < 45)) {
-        // 12:00 am a 6:44 am - Luz roja tenue
+        // 12:00 am to 6:44 am - Luz roja tenue
         setLuz(ledRojo, intensidadRojoTenue);
         status = "rojo low (C6)";
     }
-  }
+}
 
 
   delay(100); // Pequeño retardo para evitar rebotes del botón
