@@ -1,4 +1,4 @@
-String version = "19.7";
+String version = "19.8";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -107,10 +107,12 @@ void loop() {
     ultimoMinutoImpreso = minuto;
 
     // Limpiar la pantalla y mostrar mensaje
-    oled.clear();
-    oled.println("    " + String(hora) + ":" + String(minuto));  // Imprime el texto en la pantalla
-    oled.println("    v" + version);
-    oled.println("    " + status);
+    if (!botonPresionado) { // Solo actualiza la pantalla si no está en modo dormir
+      oled.clear();
+      oled.println("    " + String(hora) + ":" + String(minuto));  // Imprime el texto en la pantalla
+      oled.println("    v" + version);
+      oled.println("    " + status);
+    }
   }
 
   // Verifica el estado del botón
@@ -119,19 +121,15 @@ void loop() {
   // Detecta si el botón ha sido presionado (cambio de estado de HIGH a LOW)
   if (estadoBotonAnterior == HIGH && estadoBotonActual == LOW) {
     botonPresionado = !botonPresionado; // Cambia el estado de la variable
+
     if (botonPresionado) {
-      // Verifica si es siesta o modo noche
-      if (hora < 17) { // Si es antes de las 5:00 pm, entra en modo siesta
-        esSiesta = true;
-        horaInicioSiesta = now; // Registra la hora de inicio de la siesta
-        Serial.println("Siesta activada, luz roja tenue por 90 minutos.");
-      } else {
-        esSiesta = false;
-        Serial.println("Modo dormir nocturno activado, luz roja tenue hasta las 12:00 am.");
-      }
+        Serial.println("Modo dormir activado, luz roja tenue.");
+        oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF); // Apaga la pantalla OLED
+        setLuz(ledRojo, intensidadRojoTenue); // Luz roja tenue al entrar en modo dormir
     } else {
-      esSiesta = false; // Si se desactiva el botón, se sale del modo siesta
-      Serial.println("Modo manual desactivado, volviendo a horario normal.");
+        Serial.println("Modo dormir desactivado, regresando a horario normal.");
+        oled.ssd1306WriteCmd(SSD1306_DISPLAYON); // Enciende la pantalla OLED
+        ultimoMinutoImpreso = -1; // Forzar actualización del OLED
     }
   }
 
@@ -154,6 +152,7 @@ void loop() {
       setLuz(ledRojo, intensidadRojoTenue);
       if (hora >= 0 && hora < 6) { // A las 12:00 am se desactiva modo dormir y se vuelve a horario normal
         botonPresionado = false;
+        oled.ssd1306WriteCmd(SSD1306_DISPLAYON); // Enciende la pantalla OLED
         Serial.println("Modo dormir desactivado automáticamente a las 12:00 am, volviendo a horario normal.");
       }
     }
