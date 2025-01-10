@@ -1,4 +1,4 @@
-String version = "19.10";
+String version = "19.11";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -161,41 +161,41 @@ void loop() {
 
 if (!botonPresionado) {
     // Control de LEDs según el horario establecido
-    if (hora == 6 && minuto >= 45 && minuto < 60) {
-        // 6:45 am a 6:59 am - Luz amarilla tenue
+    if ((hora >= 0 && hora < 6) || (hora == 6 && minuto < 45)) {
+        // 12:00 am to 6:44 am - Luz roja tenue
+        setLuz(ledRojo, intensidadRojoTenue);
+        status = "rojo low (C1)";
+
+        // Apaga la pantalla OLED en este rango de tiempo
+        oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
+    } 
+    else if (hora == 6 && minuto >= 45 && minuto < 60) {
+        // 6:45 am to 6:59 am - Luz amarilla tenue
         setLuz(ledAmarillo, intensidadAmarilloTenue);
-        status = "amarillo low (C1)";
+        status = "amarillo low (C2)";
 
         // Apaga la pantalla OLED en este rango de tiempo
         oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
     } 
     else if (hora == 7 && minuto >= 0 && minuto < 60) {
-        // 7:00 am a 7:59 am - Luz verde tenue
+        // 7:00 am to 7:59 am - Luz verde tenue
         setLuz(ledVerde, intensidadVerdeTenue);
-        status = "verde low (C2)";
+        status = "verde low (C3)";
     } 
-    else if ((hora >= 8 && hora < 18) || (hora == 18 && minuto < 30)) {
-        // 8:00 am a 6:29 pm - Luz verde intensa
+    else if ((hora >= 8 && hora < 19) || (hora == 19 && minuto < 30)) {
+        // 8:00 am to 7:29 pm - Luz verde intensa
         setLuz(ledVerde, intensidadVerdeMax);
-        status = "verde max (C3)";
+        status = "verde max (C4)";
     } 
-    else if (hora == 18 && minuto >= 30 && minuto < 60) {
-        // 6:30 pm a 6:59 pm - Luz amarilla intensa
+    else if (hora == 19 && minuto >= 30 && minuto < 60) {
+        // 7:30 pm to 7:59 pm - Luz amarilla intensa
         setLuz(ledAmarillo, intensidadAmarilloMax);
-        status = "amarillo max (C4)";
+        status = "amarillo max (C5)";
     } 
     else if (hora >= 20 && hora < 24) {
         // 8:00 pm to 11:59 pm - Luz roja intensa
         setLuz(ledRojo, intensidadRojoMax);
-        status = "rojo max (C5)";
-    } 
-    else if ((hora >= 0 && hora < 6) || (hora == 6 && minuto < 45)) {
-        // 12:00 am to 6:44 am - Luz roja tenue
-        setLuz(ledRojo, intensidadRojoTenue);
-        status = "rojo low (C6)";
-
-        // Apaga la pantalla OLED en este rango de tiempo
-        oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
+        status = "rojo max (C6)";
     }
 }
 
