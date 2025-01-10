@@ -1,4 +1,4 @@
-String version = "19.9";
+String version = "19.10";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -165,6 +165,9 @@ if (!botonPresionado) {
         // 6:45 am a 6:59 am - Luz amarilla tenue
         setLuz(ledAmarillo, intensidadAmarilloTenue);
         status = "amarillo low (C1)";
+
+        // Apaga la pantalla OLED en este rango de tiempo
+        oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
     } 
     else if (hora == 7 && minuto >= 0 && minuto < 60) {
         // 7:00 am a 7:59 am - Luz verde tenue
@@ -190,6 +193,9 @@ if (!botonPresionado) {
         // 12:00 am to 6:44 am - Luz roja tenue
         setLuz(ledRojo, intensidadRojoTenue);
         status = "rojo low (C6)";
+
+        // Apaga la pantalla OLED en este rango de tiempo
+        oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
     }
 }
 
