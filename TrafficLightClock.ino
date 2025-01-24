@@ -1,4 +1,4 @@
-String version = "19.12";
+String version = "19.13";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -186,11 +186,6 @@ if (!botonPresionado) {
         // 8:00 am to 7:29 pm - Luz verde intensa
         setLuz(ledVerde, intensidadVerdeMax);
         status = "verde max (C4)";
-      
-        oled.clear();
-        oled.println("    " + String(hora) + ":" + String(minuto));  // Imprime el texto en la pantalla
-        oled.println("    v" + version);
-        oled.println("    " + status);
     } 
     else if (hora == 19 && minuto >= 30 && minuto < 60) {
         // 7:30 pm to 7:59 pm - Luz amarilla intensa
