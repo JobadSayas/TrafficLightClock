@@ -1,4 +1,4 @@
-String version = "19.13";
+String version = "20.0";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -8,7 +8,7 @@ String version = "19.13";
 String status = "--";
 
 //Horarios
-const int ajusteMinutos = 0;
+const int despertar = 7;
 
 // Pines de conexión de los LEDs
 const int ledVerde = 9;
@@ -161,7 +161,7 @@ void loop() {
 
 if (!botonPresionado) {
     // Control de LEDs según el horario establecido
-    if ((hora >= 0 && hora < 6) || (hora == 6 && minuto < 45)) {
+    if ((hora >= 0 && hora < (despertar - 1)) || (hora == (despertar - 1) && minuto < 45)) {
         // 12:00 am to 6:44 am - Luz roja tenue
         setLuz(ledRojo, intensidadRojoTenue);
         status = "rojo low (C1)";
@@ -169,7 +169,7 @@ if (!botonPresionado) {
         // Apaga la pantalla OLED en este rango de tiempo
         oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
     } 
-    else if (hora == 6 && minuto >= 45 && minuto < 60) {
+    else if (hora == (despertar - 1) && minuto >= 45 && minuto < 60) {
         // 6:45 am to 6:59 am - Luz amarilla tenue
         setLuz(ledAmarillo, intensidadAmarilloTenue);
         status = "amarillo low (C2)";
@@ -177,12 +177,12 @@ if (!botonPresionado) {
         // Apaga la pantalla OLED en este rango de tiempo
         oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
     } 
-    else if (hora == 7 && minuto >= 0 && minuto < 60) {
+    else if (hora == despertar && minuto >= 0 && minuto < 60) {
         // 7:00 am to 7:59 am - Luz verde tenue
         setLuz(ledVerde, intensidadVerdeTenue);
         status = "verde low (C3)";
     } 
-    else if ((hora >= 8 && hora < 19) || (hora == 19 && minuto < 30)) {
+    else if ((hora >= (despertar + 1) && hora < 19) || (hora == 19 && minuto < 30)) {
         // 8:00 am to 7:29 pm - Luz verde intensa
         setLuz(ledVerde, intensidadVerdeMax);
         status = "verde max (C4)";
