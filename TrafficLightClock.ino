@@ -1,4 +1,4 @@
-String version = "20.0";
+String version = "20.1";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -9,6 +9,7 @@ String status = "--";
 
 //Horarios
 const int despertar = 7;
+const int dormir = 20;
 
 // Pines de conexión de los LEDs
 const int ledVerde = 9;
@@ -187,12 +188,12 @@ if (!botonPresionado) {
         setLuz(ledVerde, intensidadVerdeMax);
         status = "verde max (C4)";
     } 
-    else if (hora == 19 && minuto >= 30 && minuto < 60) {
+    else if (hora == (dormir - 1) && minuto >= 30 && minuto < 60) {
         // 7:30 pm to 7:59 pm - Luz amarilla intensa
         setLuz(ledAmarillo, intensidadAmarilloMax);
         status = "amarillo max (C5)";
     } 
-    else if (hora >= 20 && hora < 24) {
+    else if (hora >= dormir && hora < 24) {
         // 8:00 pm to 11:59 pm - Luz roja intensa
         setLuz(ledRojo, intensidadRojoMax);
         status = "rojo max (C6)";
