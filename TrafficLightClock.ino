@@ -1,4 +1,4 @@
-String version = "20.3";
+String version = "20.4";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -111,10 +111,15 @@ void loop() {
     if (!botonPresionado) { // Solo actualiza la pantalla si no está en modo dormir
       oled.clear();
       oled.println("             iTronix");
-      oled.println(" " + String(hora) + ":" + String(minuto) + "                  v " + String(version) );  // Imprime el texto en la pantalla
+
+      // Formato con ceros a la izquierda solo para los minutos
+      String minutoStr = (minuto < 10) ? "0" + String(minuto) : String(minuto);
+
+      oled.println(" " + String(hora) + ":" + minutoStr + "                  v " + String(version));  // Imprime el texto en la pantalla
       oled.println(" " + status);
       oled.println(" w: " + String(despertar) + ":00  |  s: " + String(dormir) + ":00");
     }
+    
   }
 
   // Verifica el estado del botón
