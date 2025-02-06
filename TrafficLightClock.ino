@@ -1,4 +1,4 @@
-String version = "21.3";
+String version = "21.4";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -24,6 +24,14 @@ const int selectButton = 3;
 
 // Estado del botón
 bool botonPresionado = false;
+
+// Variables para la navegación de menú
+int opcionSeleccionada = 0; // 0 = Sleep mode, 1 = Settings
+const int totalOpciones = 2; // Total de opciones en el menú principal
+
+// Estado del botón Move
+int estadoBotonMoveActual = LOW;
+int estadoBotonMoveAnterior = LOW;
 
 // Control de siesta
 bool esSiesta = false;
@@ -78,9 +86,9 @@ void setup() {
   pinMode(ledAmarillo, OUTPUT);
   pinMode(ledRojo, OUTPUT);
 
-  // Configura el pin del botón como entrada con resistencia pull-up interna
+  // Configurar pines de botones como entrada con resistencia pull-up interna
   pinMode(selectButton, INPUT_PULLUP);
-
+  pinMode(moveButton, INPUT_PULLUP);
 
   // Inicializar la comunicación I2C
   Wire.begin();
@@ -89,6 +97,8 @@ void setup() {
   oled.begin(&Adafruit128x64, OLED_ADDRESS);  // Usamos un controlador de pantalla estándar
   oled.setFont(Arial_14);  // Establece la fuente, puedes elegir otras fuentes también
 
+  //Mostrar pantalla principal
+  mostrarPantallaPrincipal();
 }
 
 void loop() {
@@ -112,15 +122,7 @@ void loop() {
 
     // Contenido oled
     if (!botonPresionado) { // Solo actualiza la pantalla si no está en modo dormir
-      oled.clear();
-      // Formato con ceros a la izquierda solo para los minutos
-      
-      String minutoStr = (minuto < 10) ? "0" + String(minuto) : String(minuto);
-
-      oled.println(" " + String(hora) + ":" + minutoStr + "                  v " + String(version));  // Imprime el texto en la pantalla
-      oled.println(" > Sleep mode");
-      oled.println(".    Settings");
-      oled.println(" Move                Select");
+      mostrarPantallaPrincipal(); // Llama a la nueva función para mostrar el menú principal
     }
     
   }
@@ -218,6 +220,19 @@ void loop() {
   }
 
 
+  // Verifica el estado del botón Move
+  estadoBotonMoveActual = digitalRead(moveButton);
+
+  // Detecta si el botón move ha sido presionado (cambio de HIGH a LOW)
+  if (estadoBotonMoveAnterior == HIGH && estadoBotonMoveActual == LOW) {
+    opcionSeleccionada = (opcionSeleccionada + 1) % totalOpciones; // Cicla entre las opciones
+    mostrarPantallaPrincipal(); // Actualiza la pantalla con la nueva opción seleccionada
+  }
+
+  // Actualiza el estado anterior del botón Move
+  estadoBotonMoveAnterior = estadoBotonMoveActual;
+
+
 
   delay(100); // Pequeño retardo para evitar rebotes del botón
 }
@@ -236,4 +251,19 @@ void setLuz(int pin, int intensidad) {
   if (pin != ledRojo) {
     analogWrite(ledRojo, 0);
   }
+}
+
+//Pantalla principal
+void mostrarPantallaPrincipal() {
+  oled.clear();
+  String minutoStr = (now.minute() < 10) ? "0" + String(now.minute()) : String(now.minute());
+  
+  oled.println(" " + String(now.hour()) + ":" + minutoStr + "                  v " + String(version));
+
+  // Opciones de menú con el indicador '>'
+  oled.println((opcionSeleccionada == 0 ? "> " : ".   ") + String("Sleep mode"));
+  oled.println((opcionSeleccionada == 1 ? "> " : ".   ") + String("Settings"));
+
+  // Instrucciones de navegación
+  oled.println(" Move                Select");
 }
