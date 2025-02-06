@@ -1,4 +1,4 @@
-String version = "21.0";
+String version = "21.1";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -18,8 +18,9 @@ const int ledVerde = 9;
 const int ledAmarillo = 10;
 const int ledRojo = 11;
 
-// Pin del botón
-const int botonPin = 2;
+// Botones
+const int moveButton = 2;
+const int selectButton = 3;
 
 // Estado del botón
 bool botonPresionado = false;
@@ -78,7 +79,7 @@ void setup() {
   pinMode(ledRojo, OUTPUT);
 
   // Configura el pin del botón como entrada con resistencia pull-up interna
-  pinMode(botonPin, INPUT_PULLUP);
+  pinMode(selectButton, INPUT_PULLUP);
 
 
   // Inicializar la comunicación I2C
@@ -125,7 +126,7 @@ void loop() {
   }
 
   // Verifica el estado del botón
-  estadoBotonActual = digitalRead(botonPin);
+  estadoBotonActual = digitalRead(selectButton);
 
   // Detecta si el botón ha sido presionado (cambio de estado de HIGH a LOW)
   if (estadoBotonAnterior == HIGH && estadoBotonActual == LOW) {
