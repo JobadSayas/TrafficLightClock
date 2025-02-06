@@ -1,4 +1,4 @@
-String version = "20.4";
+String version = "21.0";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -8,8 +8,10 @@ String version = "20.4";
 String status = "--";
 
 //Horarios
-const int despertar = 8;
-const int dormir = 20;
+const int horaDespertar = 7;
+const int minutosDespertar = 30;
+const int horaDormir = 20;
+const int minutosDormir = 0;
 
 // Pines de conexión de los LEDs
 const int ledVerde = 9;
@@ -67,7 +69,7 @@ void setup() {
   }
 
   // Configura el RTC con la hora actual directamente
-  // rtc.adjust(DateTime(2024, 10, 14, 6, 52, 0)); // Año, Mes, Día, Hora, Minuto, Segundo
+  // rtc.adjust(DateTime(2025, 2, 16, 7, 30, 0)); // Año, Mes, Día, Hora, Minuto, Segundo
   // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
 
   // Configura los pines de los LEDs como salida
@@ -117,7 +119,7 @@ void loop() {
 
       oled.println(" " + String(hora) + ":" + minutoStr + "                  v " + String(version));  // Imprime el texto en la pantalla
       oled.println(" " + status);
-      oled.println(" w: " + String(despertar) + ":00  |  s: " + String(dormir) + ":00");
+      oled.println(" w: " + String(horaDespertar) + ":" + String(minutosDespertar) + " |  s: " + String(horaDormir) + ":" + String(minutosDormir));
     }
     
   }
@@ -167,47 +169,53 @@ void loop() {
 
 
   if (!botonPresionado) {
+    // Conversión de tiempos a minutos totales desde la medianoche
+    int tiempoActual = hora * 60 + minuto;
+    int tiempoDespertar = horaDespertar * 60 + minutosDespertar;
+    int tiempoDormir = horaDormir * 60 + minutosDormir;
+
     // Control de la pantalla OLED según la hora
-    if ((hora >= 0 && hora < (despertar - 1)) || (hora == (despertar - 1) && minuto < 45)) {
+    if (tiempoActual < (tiempoDespertar)) {
         // Apaga la pantalla OLED entre las 12:00 AM y 15 minutos antes de despertar
         oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
     } else {
-        // Enciende la pantalla OLED a partir de la hora de despertar (8:00 AM) hasta las 12:00 PM
+        // Enciende la pantalla OLED a partir de 15 minutos antes de la hora de despertar
         oled.ssd1306WriteCmd(SSD1306_DISPLAYON);
     }
 
     // Control de LEDs según el horario establecido
-    if (hora >= 0 && hora < (despertar - 1)) {
-        // 12:00 am to 6:44 am - Luz roja tenue
+    if (tiempoActual < (tiempoDespertar - 15)) {
+        // 12:00 AM hasta 15 minutos antes de despertar - Luz roja tenue
         setLuz(ledRojo, intensidadRojoTenue);
         status = "rojo low (C1)";
     } 
-    else if (hora == (despertar - 1) && minuto >= 45 && minuto < 60) {
-        // 6:45 am to 6:59 am - Luz amarilla tenue
+    else if (tiempoActual >= (tiempoDespertar - 15) && tiempoActual < tiempoDespertar) {
+        // 15 minutos antes de despertar hasta la hora de despertar - Luz amarilla tenue
         setLuz(ledAmarillo, intensidadAmarilloTenue);
         status = "amarillo low (C2)";
     } 
-    else if (hora == despertar && minuto >= 0 && minuto < 60) {
-        // 7:00 am to 7:59 am - Luz verde tenue
+    else if (tiempoActual >= tiempoDespertar && tiempoActual < (tiempoDespertar + 60)) {
+        // Hora de despertar hasta 1 hora después - Luz verde tenue
         setLuz(ledVerde, intensidadVerdeTenue);
         status = "verde low (C3)";
     } 
-    else if ((hora >= (despertar + 1) && hora < 19) || (hora == 19 && minuto < 30)) {
-        // 8:00 am to 7:29 pm - Luz verde intensa
+    else if (tiempoActual >= (tiempoDespertar + 60) && tiempoActual < (tiempoDormir - 30)) {
+        // 1 hora después de despertar hasta 30 minutos antes de dormir - Luz verde intensa
         setLuz(ledVerde, intensidadVerdeMax);
         status = "verde max (C4)";
     } 
-    else if (hora == (dormir - 1) && minuto >= 30 && minuto < 60) {
-        // 7:30 pm to 7:59 pm - Luz amarilla intensa
+    else if (tiempoActual >= (tiempoDormir - 30) && tiempoActual < tiempoDormir) {
+        // 30 minutos antes de dormir hasta la hora de dormir - Luz amarilla intensa
         setLuz(ledAmarillo, intensidadAmarilloMax);
         status = "amarillo max (C5)";
     } 
-    else if (hora >= dormir && hora < 24) {
-        // 8:00 pm to 11:59 pm - Luz roja intensa
+    else {
+        // Hora de dormir hasta las 12:00 AM - Luz roja intensa
         setLuz(ledRojo, intensidadRojoMax);
         status = "rojo max (C6)";
     }
   }
+
 
 
   delay(100); // Pequeño retardo para evitar rebotes del botón
