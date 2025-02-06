@@ -1,4 +1,4 @@
-String version = "21.2";
+String version = "21.3";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -114,6 +114,7 @@ void loop() {
     if (!botonPresionado) { // Solo actualiza la pantalla si no está en modo dormir
       oled.clear();
       // Formato con ceros a la izquierda solo para los minutos
+      
       String minutoStr = (minuto < 10) ? "0" + String(minuto) : String(minuto);
 
       oled.println(" " + String(hora) + ":" + minutoStr + "                  v " + String(version));  // Imprime el texto en la pantalla
