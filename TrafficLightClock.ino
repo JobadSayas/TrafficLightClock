@@ -1,4 +1,4 @@
-String version = "21.4";
+String version = "21.5";
 
 #include <Wire.h>
 #include <RTClib.h> // Biblioteca para manejar el RTC
@@ -10,8 +10,8 @@ String status = "--";
 //Horarios
 const int horaDespertar = 7;
 const int minutosDespertar = 30;
-const int horaDormir = 20;
-const int minutosDormir = 0;
+const int horaDormir = 19;
+const int minutosDormir = 30;
 
 // Pines de conexión de los LEDs
 const int ledVerde = 9;
@@ -262,7 +262,7 @@ void mostrarPantallaPrincipal() {
 
   // Opciones de menú con el indicador '>'
   oled.println((opcionSeleccionada == 0 ? "> " : ".   ") + String("Sleep mode"));
-  oled.println((opcionSeleccionada == 1 ? "> " : ".   ") + String("Settings"));
+  oled.println((opcionSeleccionada == 1 ? "> " : ".   ") + String("Settings") + " " + String(horaDespertar) + ":" + String(minutosDespertar) +"-"+  String(horaDormir) + ":" + String(minutosDormir));
 
   // Instrucciones de navegación
   oled.println(" Move                Select");
