@@ -1,4 +1,4 @@
-String version = "22.0.9";  // Versión actualizada
+String version = "22.0.12";  // Versión actualizada
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -28,7 +28,7 @@ bool esSiesta = false;
 bool enMenuSettings = false;
 bool editandoHora = false;
 int opcionSeleccionada = 0;          // 0=Sleep mode, 1=Settings
-int settingOpcion = 0;               // 0=Wake up, 1=Sleep at, 2=Exit
+int settingOpcion = 0;               // 0=Wake up, 1=Sleep at, 2=Back
 int editandoCampo = 0;               // 0=hora, 1=minutos
 bool editandoWakeUp = true;          // true=Wake up, false=Sleep at
 const int totalOpciones = 2;
@@ -59,10 +59,6 @@ void setup() {
     Serial.println("Error: No se encuentra el módulo RTC.");
     while (1);
   }
-
-  // Configura el RTC con la hora actual directamente
-  // rtc.adjust(DateTime(2025, 2, 16, 7, 30, 0)); // Año, Mes, Día, Hora, Minuto, Segundo
-  // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
 
   pinMode(ledVerde, OUTPUT);
   pinMode(ledAmarillo, OUTPUT);
@@ -135,7 +131,7 @@ void manejarBotones() {
         editandoCampo = 0;
         mostrarEdicionHora();
       }
-      else if (settingOpcion == 2) { // Exit
+      else if (settingOpcion == 2) { // Back
         enMenuSettings = false;
         opcionSeleccionada = 0;
         mostrarPantallaPrincipal();
@@ -236,75 +232,64 @@ void mostrarPantallaPrincipal() {
   oled.print(":");
   if (now.minute() < 10) oled.print("0");
   oled.print(now.minute());
-  oled.print("         v");
-  oled.println(version);
-
-  oled.println(opcionSeleccionada == 0 ? ">Sleep mode" : " Sleep mode");
-  oled.println(opcionSeleccionada == 1 ? ">Settings" : " Settings");
-  oled.println("Move     Select");
+  oled.print("       ");
+  oled.print(opcionSeleccionada + 1);
+  oled.print("/");
+  oled.println(totalOpciones);
+  
+  if (opcionSeleccionada == 0) {
+    oled.println(">Sleep mode");
+    oled.println(" Settings");
+  } else {
+    oled.println(" Sleep mode");
+    oled.println(">Settings");
+  }
+  
+  oled.println("Move    Select");
 }
 
 void mostrarMenuSettings() {
   oled.clear();
+  oled.print("Settings  ");
+  oled.print(settingOpcion + 1);
+  oled.print("/");
+  oled.println(totalSettingOpciones);
   
-  // Mostrar solo 2 opciones a la vez con scroll
-  switch(settingOpcion) {
-    case 0: // Wake up (1/3)
-      oled.print("Settings    1/3");
-      oled.println();
-      oled.print(settingOpcion == 0 ? ">" : " ");
-      oled.print("Wake ");
-      oled.print(horaDespertar);
-      oled.print(":");
-      if (minutosDespertar < 10) oled.print("0");
-      oled.println(minutosDespertar);
-      
-      oled.print(settingOpcion == 1 ? ">" : " ");
-      oled.print("Sleep ");
-      oled.print(horaDormir);
-      oled.print(":");
-      if (minutosDormir < 10) oled.print("0");
-      oled.println(minutosDormir);
-      break;
-      
-    case 1: // Sleep at (2/3)
-      oled.print("Settings    2/3");
-      oled.println();
-      oled.print(settingOpcion == 0 ? ">" : " ");
-      oled.print("Wake ");
-      oled.print(horaDespertar);
-      oled.print(":");
-      if (minutosDespertar < 10) oled.print("0");
-      oled.println(minutosDespertar);
-      
-      oled.print(settingOpcion == 1 ? ">" : " ");
-      oled.print("Sleep ");
-      oled.print(horaDormir);
-      oled.print(":");
-      if (minutosDormir < 10) oled.print("0");
-      oled.println(minutosDormir);
-      break;
-      
-    case 2: // Exit (3/3)
-      oled.print("Settings    3/3");
-      oled.println();
-      oled.print(settingOpcion == 1 ? ">" : " ");
-      oled.print("Sleep ");
-      oled.print(horaDormir);
-      oled.print(":");
-      if (minutosDormir < 10) oled.print("0");
-      oled.println(minutosDormir);
-      
-      oled.println(settingOpcion == 2 ? ">Exit" : " Exit");
-      break;
+  if (settingOpcion == 0) {
+    oled.print(">Wake up ");
+    oled.print(horaDespertar);
+    oled.print(":");
+    if (minutosDespertar < 10) oled.print("0");
+    oled.println(minutosDespertar);
+    oled.print(" Sleep ");
+    oled.print(horaDormir);
+    oled.print(":");
+    if (minutosDormir < 10) oled.print("0");
+    oled.println(minutosDormir);
+  }
+  else if (settingOpcion == 1) {
+    oled.print(" Wake up ");
+    oled.print(horaDespertar);
+    oled.print(":");
+    if (minutosDespertar < 10) oled.print("0");
+    oled.println(minutosDespertar);
+    oled.print(">Sleep ");
+    oled.print(horaDormir);
+    oled.print(":");
+    if (minutosDormir < 10) oled.print("0");
+    oled.println(minutosDormir);
+  }
+  else if (settingOpcion == 2) {
+    oled.println(">Back");
+    oled.println();
   }
   
-  oled.println("Move     Select");
+  oled.println("Move    Select");
 }
 
 void mostrarEdicionHora() {
   oled.clear();
-  oled.println(editandoWakeUp ? "Wake up" : "Sleep");
+  oled.println(editandoWakeUp ? "Wake up setup" : "Sleep setup");
   
   if (editandoCampo == 0) {
     oled.print(">");
@@ -337,5 +322,5 @@ void mostrarEdicionHora() {
   
   oled.println();
   oled.println();
-  oled.println("Move     Select");
+  oled.println(editandoCampo == 0 ? "Change    Apply" : "Change    Save");
 }
