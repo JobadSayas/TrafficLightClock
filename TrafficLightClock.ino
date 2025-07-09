@@ -1,4 +1,4 @@
-String version = "22.0.12";  // Versión actualizada
+String version = "22.0.13";  // Versión actualizada
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -189,6 +189,12 @@ void manejarBotones() {
 void manejarLuces() {
   if (botonPresionado) {
     setLuz(ledRojo, intensidadRojoTenue);
+    return;
+  }
+
+  // No manejar luces ni pantalla si estamos editando la hora
+  if (editandoHora) {
+    oled.ssd1306WriteCmd(SSD1306_DISPLAYON); // Asegurar que la pantalla esté encendida
     return;
   }
 
