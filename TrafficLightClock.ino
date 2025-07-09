@@ -1,4 +1,4 @@
-String version = "22.0.13";  // Versión actualizada
+String version = "22.0.14";  // Versión actualizada
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -233,16 +233,16 @@ void setLuz(int pin, int intensidad) {
 
 void mostrarPantallaPrincipal() {
   oled.clear();
+  // Primera línea: Hora y versión
   oled.print(" ");
   oled.print(now.hour());
   oled.print(":");
   if (now.minute() < 10) oled.print("0");
   oled.print(now.minute());
-  oled.print("       ");
-  oled.print(opcionSeleccionada + 1);
-  oled.print("/");
-  oled.println(totalOpciones);
+  oled.print("       v");
+  oled.println(version);
   
+  // Opciones
   if (opcionSeleccionada == 0) {
     oled.println(">Sleep mode");
     oled.println(" Settings");
@@ -251,16 +251,20 @@ void mostrarPantallaPrincipal() {
     oled.println(">Settings");
   }
   
-  oled.println("Move    Select");
+  // Navegación con indicador de posición
+  oled.print("Move ");
+  oled.print(opcionSeleccionada + 1);
+  oled.print("/");
+  oled.print(totalOpciones);
+  oled.println("    Select");
 }
 
 void mostrarMenuSettings() {
   oled.clear();
-  oled.print("Settings  ");
-  oled.print(settingOpcion + 1);
-  oled.print("/");
-  oled.println(totalSettingOpciones);
+  // Título sin versión
+  oled.println("Settings");
   
+  // Opciones
   if (settingOpcion == 0) {
     oled.print(">Wake up ");
     oled.print(horaDespertar);
@@ -290,7 +294,12 @@ void mostrarMenuSettings() {
     oled.println();
   }
   
-  oled.println("Move    Select");
+  // Navegación con indicador de posición
+  oled.print("Move ");
+  oled.print(settingOpcion + 1);
+  oled.print("/");
+  oled.print(totalSettingOpciones);
+  oled.println("    Select");
 }
 
 void mostrarEdicionHora() {
