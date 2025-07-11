@@ -1,4 +1,4 @@
-String version = "22.0.14";  // Versión actualizada
+String version = "22.0.20";  // Version actualizada
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -8,6 +8,9 @@ String version = "22.0.14";  // Versión actualizada
 // Variables globales
 String status = "--";
 int ultimoMinutoImpreso = -1;
+unsigned long ultimaInteraccion = 0;
+const unsigned long TIEMPO_PANTALLA_ACTIVA = 5000; // 5 segundos
+bool pantallaApagada = false;
 
 // Horarios (editables)
 int horaDespertar = 7;
@@ -70,6 +73,7 @@ void setup() {
   oled.begin(&Adafruit128x64, OLED_ADDRESS);
   oled.setFont(Arial14);
   mostrarPantallaPrincipal();
+  pantallaApagada = false;
 }
 
 void loop() {
@@ -86,7 +90,7 @@ void loop() {
 
     ultimoMinutoImpreso = minuto;
 
-    if (!botonPresionado && !enMenuSettings && !editandoHora) {
+    if (!botonPresionado && !enMenuSettings && !editandoHora && !pantallaApagada) {
       mostrarPantallaPrincipal();
     }
   }
@@ -94,7 +98,23 @@ void loop() {
   manejarBotones();
   manejarLuces();
 
+  // Control de timeout de pantalla
+  if (!pantallaApagada && (millis() - ultimaInteraccion > TIEMPO_PANTALLA_ACTIVA)) {
+    if (botonPresionado || modoTenueActivo()) {
+      oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
+      pantallaApagada = true;
+    }
+  }
+
   delay(100);
+}
+
+bool modoTenueActivo() {
+  int tiempoActual = now.hour() * 60 + now.minute();
+  int tiempoDespertar = horaDespertar * 60 + minutosDespertar;
+  
+  return (tiempoActual < tiempoDespertar + 60) || // Hasta 8:30 AM
+         (tiempoActual >= horaDormir * 60 + minutosDormir); // Después de 7:30 PM
 }
 
 void manejarBotones() {
@@ -103,98 +123,125 @@ void manejarBotones() {
   int currentSelect = digitalRead(selectButton);
   int currentMove = digitalRead(moveButton);
 
-  // Botón Select
+  // Si la pantalla está apagada, cualquier botón solo la enciende
+  if (pantallaApagada) {
+    if ((lastSelect == HIGH && currentSelect == LOW) || 
+        (lastMove == HIGH && currentMove == LOW)) {
+      encenderPantalla();
+      return; // Salir sin procesar otras acciones
+    }
+  }
+  
+  // Procesar botones normalmente si la pantalla está encendida
   if (lastSelect == HIGH && currentSelect == LOW) {
-    if (editandoHora) {
-      if (editandoCampo == 0) {
-        editandoCampo = 1; // Cambiar a editar minutos
-      } else {
-        // Guardar y salir al presionar Select en minutos
-        editandoHora = false;
-        editandoCampo = 0;
-        enMenuSettings = true;
-        mostrarMenuSettings();
-        return;
-      }
-      mostrarEdicionHora();
-    }
-    else if (enMenuSettings) {
-      if (settingOpcion == 0) { // Wake up
-        editandoHora = true;
-        editandoWakeUp = true;
-        editandoCampo = 0;
-        mostrarEdicionHora();
-      }
-      else if (settingOpcion == 1) { // Sleep at
-        editandoHora = true;
-        editandoWakeUp = false;
-        editandoCampo = 0;
-        mostrarEdicionHora();
-      }
-      else if (settingOpcion == 2) { // Back
-        enMenuSettings = false;
-        opcionSeleccionada = 0;
-        mostrarPantallaPrincipal();
-      }
-    } else {
-      if (opcionSeleccionada == 0) { // Sleep mode
-        botonPresionado = !botonPresionado;
-        if (botonPresionado) {
-          oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
-          setLuz(ledRojo, intensidadRojoTenue);
-        } else {
-          oled.ssd1306WriteCmd(SSD1306_DISPLAYON);
-          ultimoMinutoImpreso = -1;
-          mostrarPantallaPrincipal();
-        }
-      }
-      else if (opcionSeleccionada == 1) { // Settings
-        enMenuSettings = true;
-        settingOpcion = 0;
-        mostrarMenuSettings();
-      }
-    }
+    procesarBotonSelect();
   }
-  lastSelect = currentSelect;
-
-  // Botón Move
+  
   if (lastMove == HIGH && currentMove == LOW) {
-    if (editandoHora) {
-      if (editandoCampo == 0) { // Editando hora
-        if (editandoWakeUp) {
-          horaDespertar = (horaDespertar + 1) % 24;
-        } else {
-          horaDormir = (horaDormir + 1) % 24;
-        }
-      } else { // Editando minutos
-        if (editandoWakeUp) {
-          minutosDespertar = (minutosDespertar + 5) % 60;
-        } else {
-          minutosDormir = (minutosDormir + 5) % 60;
-        }
-      }
-      mostrarEdicionHora();
-    }
-    else if (enMenuSettings) {
-      settingOpcion = (settingOpcion + 1) % totalSettingOpciones;
-      mostrarMenuSettings();
-    } else {
-      opcionSeleccionada = (opcionSeleccionada + 1) % totalOpciones;
-      mostrarPantallaPrincipal();
-    }
+    procesarBotonMove();
   }
+  
+  lastSelect = currentSelect;
   lastMove = currentMove;
 }
 
+void encenderPantalla() {
+  oled.ssd1306WriteCmd(SSD1306_DISPLAYON);
+  pantallaApagada = false;
+  ultimaInteraccion = millis();
+  
+  if (!editandoHora && !enMenuSettings) {
+    mostrarPantallaPrincipal();
+  }
+}
+
+void procesarBotonSelect() {
+  if (editandoHora) {
+    if (editandoCampo == 0) {
+      editandoCampo = 1; // Cambiar a editar minutos
+    } else {
+      // Guardar y salir al presionar Select en minutos
+      editandoHora = false;
+      editandoCampo = 0;
+      enMenuSettings = true;
+      mostrarMenuSettings();
+      return;
+    }
+    mostrarEdicionHora();
+  }
+  else if (enMenuSettings) {
+    if (settingOpcion == 0) { // Wake up
+      editandoHora = true;
+      editandoWakeUp = true;
+      editandoCampo = 0;
+      mostrarEdicionHora();
+    }
+    else if (settingOpcion == 1) { // Sleep at
+      editandoHora = true;
+      editandoWakeUp = false;
+      editandoCampo = 0;
+      mostrarEdicionHora();
+    }
+    else if (settingOpcion == 2) { // Back
+      enMenuSettings = false;
+      opcionSeleccionada = 0;
+      mostrarPantallaPrincipal();
+    }
+  } else {
+    if (opcionSeleccionada == 0) { // Sleep mode
+      botonPresionado = !botonPresionado;
+      if (botonPresionado) {
+        setLuz(ledRojo, intensidadRojoTenue);
+        mostrarPantallaPrincipal(); // Mostrar inmediatamente el estado [On]
+      } else {
+        ultimoMinutoImpreso = -1;
+        mostrarPantallaPrincipal();
+      }
+    }
+    else if (opcionSeleccionada == 1) { // Settings
+      enMenuSettings = true;
+      settingOpcion = 0;
+      mostrarMenuSettings();
+    }
+  }
+  ultimaInteraccion = millis();
+}
+
+void procesarBotonMove() {
+  if (editandoHora) {
+    if (editandoCampo == 0) { // Editando hora
+      if (editandoWakeUp) {
+        horaDespertar = (horaDespertar + 1) % 24;
+      } else {
+        horaDormir = (horaDormir + 1) % 24;
+      }
+    } else { // Editando minutos
+      if (editandoWakeUp) {
+        minutosDespertar = (minutosDespertar + 5) % 60;
+      } else {
+        minutosDormir = (minutosDormir + 5) % 60;
+      }
+    }
+    mostrarEdicionHora();
+  }
+  else if (enMenuSettings) {
+    settingOpcion = (settingOpcion + 1) % totalSettingOpciones;
+    mostrarMenuSettings();
+  } else {
+    opcionSeleccionada = (opcionSeleccionada + 1) % totalOpciones;
+    mostrarPantallaPrincipal();
+  }
+  ultimaInteraccion = millis();
+}
+
 void manejarLuces() {
-  if (botonPresionado) {
-    setLuz(ledRojo, intensidadRojoTenue);
-    return;
+  // Verificar si es medianoche (00:00) para forzar salida del modo dormir
+  if (now.hour() == 0 && now.minute() == 0) {
+    botonPresionado = false;
   }
 
-  // No manejar luces ni pantalla si estamos editando la hora
-  if (editandoHora) {
-    oled.ssd1306WriteCmd(SSD1306_DISPLAYON); // Asegurar que la pantalla esté encendida
+  if (botonPresionado) {
+    setLuz(ledRojo, intensidadRojoTenue);
     return;
   }
 
@@ -202,23 +249,27 @@ void manejarLuces() {
   int tiempoDespertar = horaDespertar * 60 + minutosDespertar;
   int tiempoDormir = horaDormir * 60 + minutosDormir;
 
+  // 12:00 AM - 7:15 AM (rojo tenue)
   if (tiempoActual < tiempoDespertar - 15) {
-    oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
     setLuz(ledRojo, intensidadRojoTenue);
   } 
+  // 7:15 AM - 7:30 AM (amarillo tenue)
   else if (tiempoActual < tiempoDespertar) {
-    oled.ssd1306WriteCmd(SSD1306_DISPLAYON);
     setLuz(ledAmarillo, intensidadAmarilloTenue);
   }
+  // 7:30 AM - 8:30 AM (verde tenue)
   else if (tiempoActual < tiempoDespertar + 60) {
     setLuz(ledVerde, intensidadVerdeTenue);
   }
+  // 8:30 AM - 7:00 PM (verde máximo)
   else if (tiempoActual < tiempoDormir - 30) {
     setLuz(ledVerde, intensidadVerdeMax);
   }
+  // 7:00 PM - 7:30 PM (amarillo máximo)
   else if (tiempoActual < tiempoDormir) {
     setLuz(ledAmarillo, intensidadAmarilloMax);
   }
+  // Después de 7:30 PM (rojo máximo)
   else {
     setLuz(ledRojo, intensidadRojoMax);
   }
@@ -242,12 +293,16 @@ void mostrarPantallaPrincipal() {
   oled.print("       v");
   oled.println(version);
   
-  // Opciones
+  // Opciones con estado [On]/[Off] actualizado inmediatamente
   if (opcionSeleccionada == 0) {
-    oled.println(">Sleep mode");
+    oled.print(">Sleep mode [");
+    oled.print(botonPresionado ? "On" : "Off");
+    oled.println("]");
     oled.println(" Settings");
   } else {
-    oled.println(" Sleep mode");
+    oled.print(" Sleep mode [");
+    oled.print(botonPresionado ? "On" : "Off");
+    oled.println("]");
     oled.println(">Settings");
   }
   
