@@ -1,4 +1,4 @@
-String version = "22.0.20";  // Version actualizada
+String version = "3.22";  // Version actualizada
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -9,14 +9,20 @@ String version = "22.0.20";  // Version actualizada
 String status = "--";
 int ultimoMinutoImpreso = -1;
 unsigned long ultimaInteraccion = 0;
-const unsigned long TIEMPO_PANTALLA_ACTIVA = 5000; // 5 segundos
+const unsigned long TIEMPO_PANTALLA_ACTIVA = 30000; // 30 segundos
 bool pantallaApagada = false;
+unsigned long tiempoEncendidoPantalla = 0; // Para controlar el bloqueo temporal
+const unsigned long TIEMPO_BLOQUEO_BOTONES = 300; // 300ms de bloqueo después de encender
 
 // Horarios (editables)
 int horaDespertar = 7;
 int minutosDespertar = 30;
 int horaDormir = 19;
 int minutosDormir = 30;
+
+// Variables temporales para edición de reloj - NUEVAS
+int horaTemporalReloj = 0;
+int minutosTemporalReloj = 0;
 
 // Pines
 const int ledVerde = 9;
@@ -30,12 +36,15 @@ bool botonPresionado = false;
 bool esSiesta = false;
 bool enMenuSettings = false;
 bool editandoHora = false;
+bool editandoReloj = false;          // Para diferenciar si estamos editando el reloj
 int opcionSeleccionada = 0;          // 0=Sleep mode, 1=Settings
-int settingOpcion = 0;               // 0=Wake up, 1=Sleep at, 2=Back
+int settingOpcion = 0;               // 0=Wake up, 1=Sleep at, 2=Clock setup, 3=Back
 int editandoCampo = 0;               // 0=hora, 1=minutos
 bool editandoWakeUp = true;          // true=Wake up, false=Sleep at
 const int totalOpciones = 2;
-const int totalSettingOpciones = 3;
+const int totalSettingOpciones = 4;  // Cambiado de 3 a 4
+int settingScrollOffset = 0;         // Para controlar qué opciones mostrar en pantalla
+const int MAX_OPCIONES_POR_PANTALLA = 2; // Máximo de opciones visibles a la vez
 
 // RTC
 RTC_DS3231 rtc;
@@ -62,6 +71,15 @@ void setup() {
     Serial.println("Error: No se encuentra el módulo RTC.");
     while (1);
   }
+
+  // Verificar si el RTC perdió la hora (fecha muy antigua)
+  now = rtc.now();
+  if (now.year() < 2024) {
+    Serial.println("ADVERTENCIA: RTC parece tener hora incorrecta. Usa Clock setup para ajustar.");
+  }
+
+  // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  // rtc.adjust(DateTime(2024, 1, 15, 22, 30, 0)); // Formato: (año, mes, día, hora, minuto, segundo)
 
   pinMode(ledVerde, OUTPUT);
   pinMode(ledAmarillo, OUTPUT);
@@ -100,10 +118,9 @@ void loop() {
 
   // Control de timeout de pantalla
   if (!pantallaApagada && (millis() - ultimaInteraccion > TIEMPO_PANTALLA_ACTIVA)) {
-    if (botonPresionado || modoTenueActivo()) {
-      oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
-      pantallaApagada = true;
-    }
+    // Apagar pantalla después de 30 segundos de inactividad - sin condiciones adicionales
+    oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
+    pantallaApagada = true;
   }
 
   delay(100);
@@ -122,17 +139,45 @@ void manejarBotones() {
   static int lastMove = HIGH;
   int currentSelect = digitalRead(selectButton);
   int currentMove = digitalRead(moveButton);
+  
+  // Verificar si estamos en período de bloqueo después de encender la pantalla
+  static bool bloqueoActivo = false;
+  if (bloqueoActivo && (millis() - tiempoEncendidoPantalla > TIEMPO_BLOQUEO_BOTONES)) {
+    bloqueoActivo = false;
+  }
 
   // Si la pantalla está apagada, cualquier botón solo la enciende
   if (pantallaApagada) {
-    if ((lastSelect == HIGH && currentSelect == LOW) || 
-        (lastMove == HIGH && currentMove == LOW)) {
+    // Detectar flanco de bajada en cualquier botón
+    bool botonPresionadoAhora = false;
+    
+    if (lastSelect == HIGH && currentSelect == LOW) {
+      botonPresionadoAhora = true;
+    }
+    if (lastMove == HIGH && currentMove == LOW) {
+      botonPresionadoAhora = true;
+    }
+    
+    if (botonPresionadoAhora) {
       encenderPantalla();
+      // Activar bloqueo temporal
+      bloqueoActivo = true;
+      tiempoEncendidoPantalla = millis();
+      // Actualizar estados para evitar procesamiento en siguiente ciclo
+      lastSelect = currentSelect;
+      lastMove = currentMove;
       return; // Salir sin procesar otras acciones
     }
   }
   
-  // Procesar botones normalmente si la pantalla está encendida
+  // Si hay bloqueo activo, no procesar botones
+  if (bloqueoActivo) {
+    lastSelect = currentSelect;
+    lastMove = currentMove;
+    return;
+  }
+  
+  // Procesar botones normalmente si la pantalla está encendida y no hay bloqueo
   if (lastSelect == HIGH && currentSelect == LOW) {
     procesarBotonSelect();
   }
@@ -159,30 +204,54 @@ void procesarBotonSelect() {
   if (editandoHora) {
     if (editandoCampo == 0) {
       editandoCampo = 1; // Cambiar a editar minutos
+      mostrarEdicionHora();
     } else {
       // Guardar y salir al presionar Select en minutos
+      if (editandoReloj) {
+        // Aplicar la hora al RTC real usando las variables temporales
+        DateTime nuevaHora = DateTime(now.year(), now.month(), now.day(), 
+                                      horaTemporalReloj, minutosTemporalReloj, 0);
+        rtc.adjust(nuevaHora);
+        Serial.print("RTC ajustado a: ");
+        Serial.print(horaTemporalReloj);
+        Serial.print(":");
+        if (minutosTemporalReloj < 10) Serial.print("0");
+        Serial.println(minutosTemporalReloj);
+      }
+      
       editandoHora = false;
+      editandoReloj = false;
       editandoCampo = 0;
       enMenuSettings = true;
       mostrarMenuSettings();
       return;
     }
-    mostrarEdicionHora();
   }
   else if (enMenuSettings) {
     if (settingOpcion == 0) { // Wake up
       editandoHora = true;
+      editandoReloj = false;
       editandoWakeUp = true;
       editandoCampo = 0;
       mostrarEdicionHora();
     }
     else if (settingOpcion == 1) { // Sleep at
       editandoHora = true;
+      editandoReloj = false;
       editandoWakeUp = false;
       editandoCampo = 0;
       mostrarEdicionHora();
     }
-    else if (settingOpcion == 2) { // Back
+    else if (settingOpcion == 2) { // Clock setup
+      editandoHora = true;
+      editandoReloj = true;
+      editandoCampo = 0;
+      // Usamos las variables temporales en lugar de horaDespertar/minutosDespertar
+      horaTemporalReloj = now.hour();
+      minutosTemporalReloj = now.minute();
+      mostrarEdicionHora();
+    }
+    else if (settingOpcion == 3) { // Back
       enMenuSettings = false;
       opcionSeleccionada = 0;
       mostrarPantallaPrincipal();
@@ -201,6 +270,7 @@ void procesarBotonSelect() {
     else if (opcionSeleccionada == 1) { // Settings
       enMenuSettings = true;
       settingOpcion = 0;
+      settingScrollOffset = 0; // Resetear scroll al entrar
       mostrarMenuSettings();
     }
   }
@@ -210,22 +280,36 @@ void procesarBotonSelect() {
 void procesarBotonMove() {
   if (editandoHora) {
     if (editandoCampo == 0) { // Editando hora
-      if (editandoWakeUp) {
+      if (editandoReloj) {
+        // Para el reloj: incrementar hora normalmente usando variables temporales
+        horaTemporalReloj = (horaTemporalReloj + 1) % 24;
+      } else if (editandoWakeUp) {
         horaDespertar = (horaDespertar + 1) % 24;
       } else {
         horaDormir = (horaDormir + 1) % 24;
       }
     } else { // Editando minutos
-      if (editandoWakeUp) {
+      if (editandoReloj) {
+        // Para el reloj: incrementar minuto a minuto usando variables temporales
+        minutosTemporalReloj = (minutosTemporalReloj + 1) % 60;
+      } else if (editandoWakeUp) {
+        // Para wake up: incrementar de 5 en 5 minutos
         minutosDespertar = (minutosDespertar + 5) % 60;
       } else {
+        // Para sleep: incrementar de 5 en 5 minutos
         minutosDormir = (minutosDormir + 5) % 60;
       }
     }
     mostrarEdicionHora();
   }
   else if (enMenuSettings) {
-    settingOpcion = (settingOpcion + 1) % totalSettingOpciones;
+    int nuevaOpcion = (settingOpcion + 1) % totalSettingOpciones;
+    settingOpcion = nuevaOpcion;
+    
+    // Calcular nuevo scroll offset basado en pares de opciones
+    // Si estamos en opciones 0-1, scroll = 0; si estamos en 2-3, scroll = 2
+    settingScrollOffset = (settingOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+    
     mostrarMenuSettings();
   } else {
     opcionSeleccionada = (opcionSeleccionada + 1) % totalOpciones;
@@ -290,8 +374,8 @@ void mostrarPantallaPrincipal() {
   oled.print(":");
   if (now.minute() < 10) oled.print("0");
   oled.print(now.minute());
-  oled.print("       v");
-  oled.println(version);
+  oled.println("                   iTronix");
+  // oled.println(version);
   
   // Opciones con estado [On]/[Off] actualizado inmediatamente
   if (opcionSeleccionada == 0) {
@@ -307,73 +391,114 @@ void mostrarPantallaPrincipal() {
   }
   
   // Navegación con indicador de posición
-  oled.print("Move ");
+  oled.print(" Move ");
   oled.print(opcionSeleccionada + 1);
   oled.print("/");
   oled.print(totalOpciones);
-  oled.println("    Select");
+  oled.println("          Select");
 }
 
 void mostrarMenuSettings() {
   oled.clear();
-  // Título sin versión
-  oled.println("Settings");
+  // Título
+  oled.println(" Settings");
   
-  // Opciones
-  if (settingOpcion == 0) {
-    oled.print(">Wake up ");
-    oled.print(horaDespertar);
-    oled.print(":");
-    if (minutosDespertar < 10) oled.print("0");
-    oled.println(minutosDespertar);
-    oled.print(" Sleep ");
-    oled.print(horaDormir);
-    oled.print(":");
-    if (minutosDormir < 10) oled.print("0");
-    oled.println(minutosDormir);
+  // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
+  // settingScrollOffset será 0 para opciones 0-1, o 2 para opciones 2-3
+  int opcionInicial = settingScrollOffset;
+  int opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalSettingOpciones);
+  
+  // Mostrar las opciones correspondientes
+  for (int i = opcionInicial; i < opcionFinal; i++) {
+    if (i == settingOpcion) {
+      oled.print(">");
+    } else {
+      oled.print(" ");
+    }
+    
+    switch(i) {
+      case 0: // Wake up
+        oled.print("Wake up ");
+        oled.print(horaDespertar);
+        oled.print(":");
+        if (minutosDespertar < 10) oled.print("0");
+        oled.print(minutosDespertar);
+        break;
+        
+      case 1: // Sleep at
+        oled.print("Sleep ");
+        oled.print(horaDormir);
+        oled.print(":");
+        if (minutosDormir < 10) oled.print("0");
+        oled.print(minutosDormir);
+        break;
+        
+      case 2: // Clock setup
+        oled.print("Clock setup");
+        break;
+        
+      case 3: // Back
+        oled.print("Back");
+        break;
+    }
+    
+    oled.println();
   }
-  else if (settingOpcion == 1) {
-    oled.print(" Wake up ");
-    oled.print(horaDespertar);
-    oled.print(":");
-    if (minutosDespertar < 10) oled.print("0");
-    oled.println(minutosDespertar);
-    oled.print(">Sleep ");
-    oled.print(horaDormir);
-    oled.print(":");
-    if (minutosDormir < 10) oled.print("0");
-    oled.println(minutosDormir);
-  }
-  else if (settingOpcion == 2) {
-    oled.println(">Back");
+  
+  // Si hay menos opciones que el máximo, mostrar líneas vacías
+  for (int i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
     oled.println();
   }
   
   // Navegación con indicador de posición
-  oled.print("Move ");
+  oled.print(" Move ");
   oled.print(settingOpcion + 1);
   oled.print("/");
   oled.print(totalSettingOpciones);
-  oled.println("    Select");
+  oled.println("          Select");
 }
 
 void mostrarEdicionHora() {
   oled.clear();
-  oled.println(editandoWakeUp ? "Wake up setup" : "Sleep setup");
   
+  // Título diferente según lo que estemos editando
+  if (editandoReloj) {
+    oled.println(" Clock setup");
+  } else if (editandoWakeUp) {
+    oled.println(" Wake up setup");
+  } else {
+    oled.println(" Sleep setup");
+  }
+  
+  // Mostrar hora y minutos con cursor
   if (editandoCampo == 0) {
     oled.print(">");
-    oled.print(editandoWakeUp ? horaDespertar : horaDormir);
+    if (editandoReloj) {
+      oled.print(horaTemporalReloj);
+    } else if (editandoWakeUp) {
+      oled.print(horaDespertar);
+    } else {
+      oled.print(horaDormir);
+    }
   } else {
     oled.print(" ");
-    oled.print(editandoWakeUp ? horaDespertar : horaDormir);
+    if (editandoReloj) {
+      oled.print(horaTemporalReloj);
+    } else if (editandoWakeUp) {
+      oled.print(horaDespertar);
+    } else {
+      oled.print(horaDormir);
+    }
   }
   
   oled.print(":");
   
   if (editandoCampo == 1) {
     oled.print(">");
-    if (editandoWakeUp) {
+    if (editandoReloj) {
+      if (minutosTemporalReloj < 10) oled.print("0");
+      oled.print(minutosTemporalReloj);
+    } else if (editandoWakeUp) {
       if (minutosDespertar < 10) oled.print("0");
       oled.print(minutosDespertar);
     } else {
@@ -381,7 +506,10 @@ void mostrarEdicionHora() {
       oled.print(minutosDormir);
     }
   } else {
-    if (editandoWakeUp) {
+    if (editandoReloj) {
+      if (minutosTemporalReloj < 10) oled.print("0");
+      oled.print(minutosTemporalReloj);
+    } else if (editandoWakeUp) {
       if (minutosDespertar < 10) oled.print("0");
       oled.print(minutosDespertar);
     } else {
@@ -392,5 +520,11 @@ void mostrarEdicionHora() {
   
   oled.println();
   oled.println();
-  oled.println(editandoCampo == 0 ? "Change    Apply" : "Change    Save");
+  
+  // Instrucciones en la parte inferior
+  if (editandoCampo == 0) {
+    oled.println(" Change             Apply");
+  } else {
+    oled.println(" Change              Apply");
+  }
 }
