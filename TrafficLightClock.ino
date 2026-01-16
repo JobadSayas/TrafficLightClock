@@ -1,4 +1,4 @@
-String version = "1.24";  // Version actualizada con Game mode
+String version = "1.25";  // Version actualizada con Game mode
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -612,7 +612,7 @@ void mostrarPantallaPrincipal() {
 void mostrarMenuSettings() {
   oled.clear();
   // Título
-  oled.println(" Settings");
+  oled.println(" SETTINGS");
   
   // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
   int opcionInicial = settingScrollOffset;
@@ -671,7 +671,7 @@ void mostrarMenuSettings() {
 void mostrarForceColorMenu() {
   oled.clear();
   // Título
-  oled.println(" Force color");
+  oled.println(" FORCE COLOR");
   
   // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
   int opcionInicial = (forceColorOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
@@ -726,11 +726,11 @@ void mostrarEdicionHora() {
   
   // Título diferente según lo que estemos editando
   if (editandoReloj) {
-    oled.println(" Clock setup");
+    oled.println(" CLOCK SETUP");
   } else if (editandoWakeUp) {
-    oled.println(" Wake up setup");
+    oled.println(" WAKE UP SETUP");
   } else {
-    oled.println(" Sleep setup");
+    oled.println(" SLEEP SETUP");
   }
   
   // Mostrar hora y minutos con cursor
