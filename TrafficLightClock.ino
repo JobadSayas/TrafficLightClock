@@ -1,4 +1,4 @@
-String version = "1.23";
+String version = "1.24";  // Version actualizada con Game mode
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -24,13 +24,26 @@ int minutosDormir = 30;
 int horaTemporalReloj = 0;
 int minutosTemporalReloj = 0;
 
-// Nuevas variables para 12-hour sleep y Force color
+// Variables para 12-hour sleep y Force color
 bool doceHorasSleep = false;
 unsigned long inicioDoceHoras = 0;
 const unsigned long DOCE_HORAS_MS = 12 * 60 * 60 * 1000UL; // 12 horas en milisegundos
 
 int forceColor = 0; // 0=Off, 1=Green, 2=Yellow, 3=Red
 const char* forceColorTexto[] = {"Off", "G", "Y", "R"};
+
+// Variables para Game mode (nuevo)
+bool gameMode = false;
+unsigned long inicioGameMode = 0;
+unsigned long ultimoCambioGameMode = 0;
+int estadoGameMode = 0; // 0=Green, 1=Yellow, 2=Red
+
+// ==================== CONFIGURACIÓN DE MODO JUEGO ====================
+// Puedes ajustar estos tiempos según necesites
+const unsigned long TIEMPO_VERDE_JUEGO = 20000;   // 30 segundos en verde
+const unsigned long TIEMPO_AMARILLO_JUEGO = 3000; // 5 segundos en amarillo
+const unsigned long TIEMPO_ROJO_JUEGO = 10000;    // 15 segundos en rojo
+// =====================================================================
 
 // Pines
 const int ledVerde = 9;
@@ -45,11 +58,11 @@ bool esSiesta = false;
 bool enMenuSettings = false;
 bool editandoHora = false;
 bool editandoReloj = false;          // Para diferenciar si estamos editando el reloj
-int opcionSeleccionada = 0;          // 0=Sleep mode, 1=12-hour sleep, 2=Force color, 3=Settings
+int opcionSeleccionada = 0;          // 0=Sleep mode, 1=12-hour sleep, 2=Force color, 3=Game mode, 4=Settings
 int settingOpcion = 0;               // 0=Wake up, 1=Sleep at, 2=Clock setup, 3=Back
 int editandoCampo = 0;               // 0=hora, 1=minutos
 bool editandoWakeUp = true;          // true=Wake up, false=Sleep at
-const int totalOpciones = 4;         // Cambiado de 2 a 4
+const int totalOpciones = 5;         // Cambiado de 4 a 5 (agregamos Game mode)
 const int totalSettingOpciones = 4;
 int settingScrollOffset = 0;         // Para controlar qué opciones mostrar en pantalla
 const int MAX_OPCIONES_POR_PANTALLA = 2; // Máximo de opciones visibles a la vez
@@ -106,7 +119,11 @@ void setup() {
   mostrarPantallaPrincipal();
   pantallaApagada = false;
   
-  Serial.println("=== SISTEMA INICIADO - VERSION 4.0 ===");
+  Serial.println("=== SISTEMA INICIADO - VERSION 5.0 (CON GAME MODE) ===");
+  Serial.println("Configuración Game mode:");
+  Serial.print("  Verde: "); Serial.print(TIEMPO_VERDE_JUEGO/1000); Serial.println(" segundos");
+  Serial.print("  Amarillo: "); Serial.print(TIEMPO_AMARILLO_JUEGO/1000); Serial.println(" segundos");
+  Serial.print("  Rojo: "); Serial.print(TIEMPO_ROJO_JUEGO/1000); Serial.println(" segundos");
 }
 
 void loop() {
@@ -327,7 +344,19 @@ void procesarBotonSelect() {
       forceColorOpcion = 0;
       mostrarForceColorMenu();
     }
-    else if (opcionSeleccionada == 3) { // Settings
+    else if (opcionSeleccionada == 3) { // Game mode (NUEVO)
+      gameMode = !gameMode;
+      if (gameMode) {
+        inicioGameMode = millis();
+        ultimoCambioGameMode = millis();
+        estadoGameMode = 0; // Comienza en verde
+        Serial.println("Game mode ACTIVADO - Comienza en VERDE");
+      } else {
+        Serial.println("Game mode DESACTIVADO");
+      }
+      mostrarPantallaPrincipal();
+    }
+    else if (opcionSeleccionada == 4) { // Settings
       enMenuSettings = true;
       settingOpcion = 0;
       settingScrollOffset = 0; // Resetear scroll al entrar
@@ -429,7 +458,13 @@ void manejarLuces() {
     return;
   }
 
-  // 4. LÓGICA NORMAL DE HORARIOS
+  // 4. GAME MODE (nuevo - semáforo de juego)
+  if (gameMode) {
+    manejarGameMode();
+    return;
+  }
+
+  // 5. LÓGICA NORMAL DE HORARIOS
   int tiempoActual = now.hour() * 60 + now.minute();
   int tiempoDespertar = horaDespertar * 60 + minutosDespertar;
   int tiempoDormir = horaDormir * 60 + minutosDormir;
@@ -460,6 +495,46 @@ void manejarLuces() {
   }
 }
 
+void manejarGameMode() {
+  unsigned long tiempoActual = millis();
+  unsigned long tiempoTranscurrido = tiempoActual - ultimoCambioGameMode;
+  
+  switch(estadoGameMode) {
+    case 0: // VERDE
+      if (tiempoTranscurrido >= TIEMPO_VERDE_JUEGO) {
+        // Cambiar a AMARILLO
+        estadoGameMode = 1;
+        ultimoCambioGameMode = tiempoActual;
+        Serial.println("Game mode: VERDE -> AMARILLO");
+      } else {
+        setLuz(ledVerde, intensidadVerdeMax);
+      }
+      break;
+      
+    case 1: // AMARILLO
+      if (tiempoTranscurrido >= TIEMPO_AMARILLO_JUEGO) {
+        // Cambiar a ROJO
+        estadoGameMode = 2;
+        ultimoCambioGameMode = tiempoActual;
+        Serial.println("Game mode: AMARILLO -> ROJO");
+      } else {
+        setLuz(ledAmarillo, intensidadAmarilloMax);
+      }
+      break;
+      
+    case 2: // ROJO
+      if (tiempoTranscurrido >= TIEMPO_ROJO_JUEGO) {
+        // Volver a VERDE (ciclo completo)
+        estadoGameMode = 0;
+        ultimoCambioGameMode = tiempoActual;
+        Serial.println("Game mode: ROJO -> VERDE (ciclo completo)");
+      } else {
+        setLuz(ledRojo, intensidadRojoMax);
+      }
+      break;
+  }
+}
+
 void setLuz(int pin, int intensidad) {
   analogWrite(pin, intensidad);
   if (pin != ledVerde) digitalWrite(ledVerde, LOW);
@@ -476,7 +551,7 @@ void mostrarPantallaPrincipal() {
   oled.print(":");
   if (now.minute() < 10) oled.print("0");
   oled.print(now.minute());
-  oled.println("                   iTronix");
+  oled.println("                iTronix");
   
   // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
   int opcionInicial = (opcionSeleccionada / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
@@ -509,7 +584,13 @@ void mostrarPantallaPrincipal() {
         oled.println("]");
         break;
         
-      case 3: // Settings
+      case 3: // Game mode (NUEVO)
+        oled.print("Game mode [");
+        oled.print(gameMode ? "On" : "Off");
+        oled.println("]");
+        break;
+        
+      case 4: // Settings
         oled.println("Settings");
         break;
     }
