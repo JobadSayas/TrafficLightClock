@@ -1,4 +1,4 @@
-String version = "3.22";  // Version actualizada
+String version = "1.23";
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -20,9 +20,17 @@ int minutosDespertar = 30;
 int horaDormir = 19;
 int minutosDormir = 30;
 
-// Variables temporales para edición de reloj - NUEVAS
+// Variables temporales para edición de reloj
 int horaTemporalReloj = 0;
 int minutosTemporalReloj = 0;
+
+// Nuevas variables para 12-hour sleep y Force color
+bool doceHorasSleep = false;
+unsigned long inicioDoceHoras = 0;
+const unsigned long DOCE_HORAS_MS = 12 * 60 * 60 * 1000UL; // 12 horas en milisegundos
+
+int forceColor = 0; // 0=Off, 1=Green, 2=Yellow, 3=Red
+const char* forceColorTexto[] = {"Off", "G", "Y", "R"};
 
 // Pines
 const int ledVerde = 9;
@@ -37,14 +45,19 @@ bool esSiesta = false;
 bool enMenuSettings = false;
 bool editandoHora = false;
 bool editandoReloj = false;          // Para diferenciar si estamos editando el reloj
-int opcionSeleccionada = 0;          // 0=Sleep mode, 1=Settings
+int opcionSeleccionada = 0;          // 0=Sleep mode, 1=12-hour sleep, 2=Force color, 3=Settings
 int settingOpcion = 0;               // 0=Wake up, 1=Sleep at, 2=Clock setup, 3=Back
 int editandoCampo = 0;               // 0=hora, 1=minutos
 bool editandoWakeUp = true;          // true=Wake up, false=Sleep at
-const int totalOpciones = 2;
-const int totalSettingOpciones = 4;  // Cambiado de 3 a 4
+const int totalOpciones = 4;         // Cambiado de 2 a 4
+const int totalSettingOpciones = 4;
 int settingScrollOffset = 0;         // Para controlar qué opciones mostrar en pantalla
 const int MAX_OPCIONES_POR_PANTALLA = 2; // Máximo de opciones visibles a la vez
+
+// Nueva variable para Force color menu
+bool enForceColorMenu = false;
+int forceColorOpcion = 0;            // 0=Green, 1=Yellow, 2=Red, 3=Off, 4=Back
+const int totalForceColorOpciones = 5;
 
 // RTC
 RTC_DS3231 rtc;
@@ -79,7 +92,7 @@ void setup() {
   }
 
   // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  // rtc.adjust(DateTime(2024, 1, 15, 22, 30, 0)); // Formato: (año, mes, día, hora, minuto, segundo)
+  // rtc.adjust(DateTime(2025, 1, 12, 19, 15, 0)); // Formato: (año, mes, día, hora, minuto, segundo)
 
   pinMode(ledVerde, OUTPUT);
   pinMode(ledAmarillo, OUTPUT);
@@ -92,6 +105,8 @@ void setup() {
   oled.setFont(Arial14);
   mostrarPantallaPrincipal();
   pantallaApagada = false;
+  
+  Serial.println("=== SISTEMA INICIADO - VERSION 4.0 ===");
 }
 
 void loop() {
@@ -108,7 +123,7 @@ void loop() {
 
     ultimoMinutoImpreso = minuto;
 
-    if (!botonPresionado && !enMenuSettings && !editandoHora && !pantallaApagada) {
+    if (!botonPresionado && !enMenuSettings && !editandoHora && !enForceColorMenu && !pantallaApagada) {
       mostrarPantallaPrincipal();
     }
   }
@@ -195,13 +210,40 @@ void encenderPantalla() {
   pantallaApagada = false;
   ultimaInteraccion = millis();
   
-  if (!editandoHora && !enMenuSettings) {
+  if (!editandoHora && !enMenuSettings && !enForceColorMenu) {
     mostrarPantallaPrincipal();
   }
 }
 
 void procesarBotonSelect() {
-  if (editandoHora) {
+  if (enForceColorMenu) {
+    // Menú Force color
+    if (forceColorOpcion == 0) { // Green
+      forceColor = 1;
+      enForceColorMenu = false;
+      mostrarPantallaPrincipal();
+    }
+    else if (forceColorOpcion == 1) { // Yellow
+      forceColor = 2;
+      enForceColorMenu = false;
+      mostrarPantallaPrincipal();
+    }
+    else if (forceColorOpcion == 2) { // Red
+      forceColor = 3;
+      enForceColorMenu = false;
+      mostrarPantallaPrincipal();
+    }
+    else if (forceColorOpcion == 3) { // Off
+      forceColor = 0;
+      enForceColorMenu = false;
+      mostrarPantallaPrincipal();
+    }
+    else if (forceColorOpcion == 4) { // Back
+      enForceColorMenu = false;
+      mostrarPantallaPrincipal();
+    }
+  }
+  else if (editandoHora) {
     if (editandoCampo == 0) {
       editandoCampo = 1; // Cambiar a editar minutos
       mostrarEdicionHora();
@@ -257,17 +299,35 @@ void procesarBotonSelect() {
       mostrarPantallaPrincipal();
     }
   } else {
+    // Menú principal
     if (opcionSeleccionada == 0) { // Sleep mode
       botonPresionado = !botonPresionado;
       if (botonPresionado) {
         setLuz(ledRojo, intensidadRojoTenue);
         mostrarPantallaPrincipal(); // Mostrar inmediatamente el estado [On]
+        Serial.println("Sleep mode ACTIVADO");
       } else {
         ultimoMinutoImpreso = -1;
         mostrarPantallaPrincipal();
+        Serial.println("Sleep mode DESACTIVADO");
       }
     }
-    else if (opcionSeleccionada == 1) { // Settings
+    else if (opcionSeleccionada == 1) { // 12-hour sleep
+      doceHorasSleep = !doceHorasSleep;
+      if (doceHorasSleep) {
+        inicioDoceHoras = millis();
+        Serial.println("12-hour sleep ACTIVADO - Inicio registrado");
+      } else {
+        Serial.println("12-hour sleep DESACTIVADO");
+      }
+      mostrarPantallaPrincipal();
+    }
+    else if (opcionSeleccionada == 2) { // Force color
+      enForceColorMenu = true;
+      forceColorOpcion = 0;
+      mostrarForceColorMenu();
+    }
+    else if (opcionSeleccionada == 3) { // Settings
       enMenuSettings = true;
       settingOpcion = 0;
       settingScrollOffset = 0; // Resetear scroll al entrar
@@ -278,7 +338,12 @@ void procesarBotonSelect() {
 }
 
 void procesarBotonMove() {
-  if (editandoHora) {
+  if (enForceColorMenu) {
+    // Navegación en Force color menu
+    forceColorOpcion = (forceColorOpcion + 1) % totalForceColorOpciones;
+    mostrarForceColorMenu();
+  }
+  else if (editandoHora) {
     if (editandoCampo == 0) { // Editando hora
       if (editandoReloj) {
         // Para el reloj: incrementar hora normalmente usando variables temporales
@@ -307,12 +372,18 @@ void procesarBotonMove() {
     settingOpcion = nuevaOpcion;
     
     // Calcular nuevo scroll offset basado en pares de opciones
-    // Si estamos en opciones 0-1, scroll = 0; si estamos en 2-3, scroll = 2
     settingScrollOffset = (settingOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
     
     mostrarMenuSettings();
   } else {
-    opcionSeleccionada = (opcionSeleccionada + 1) % totalOpciones;
+    // Menú principal con scroll por pares
+    int nuevaOpcion = (opcionSeleccionada + 1) % totalOpciones;
+    opcionSeleccionada = nuevaOpcion;
+    
+    // Calcular scroll offset para menú principal (pares de 2)
+    static int mainScrollOffset = 0;
+    mainScrollOffset = (opcionSeleccionada / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+    
     mostrarPantallaPrincipal();
   }
   ultimaInteraccion = millis();
@@ -324,11 +395,41 @@ void manejarLuces() {
     botonPresionado = false;
   }
 
+  // Verificar si 12-hour sleep ha terminado
+  if (doceHorasSleep && (millis() - inicioDoceHoras >= DOCE_HORAS_MS)) {
+    doceHorasSleep = false;
+    Serial.println("12-hour sleep COMPLETADO - Desactivado automáticamente");
+  }
+
+  // 1. FORCE COLOR tiene prioridad máxima
+  if (forceColor > 0) {
+    switch(forceColor) {
+      case 1: // Green
+        setLuz(ledVerde, intensidadVerdeMax);
+        break;
+      case 2: // Yellow
+        setLuz(ledAmarillo, intensidadAmarilloMax);
+        break;
+      case 3: // Red
+        setLuz(ledRojo, intensidadRojoMax);
+        break;
+    }
+    return;
+  }
+
+  // 2. SLEEP MODE (rojo tenue siempre)
   if (botonPresionado) {
     setLuz(ledRojo, intensidadRojoTenue);
     return;
   }
 
+  // 3. 12-HOUR SLEEP (rojo tenue por 12 horas)
+  if (doceHorasSleep) {
+    setLuz(ledRojo, intensidadRojoTenue);
+    return;
+  }
+
+  // 4. LÓGICA NORMAL DE HORARIOS
   int tiempoActual = now.hour() * 60 + now.minute();
   int tiempoDespertar = horaDespertar * 60 + minutosDespertar;
   int tiempoDormir = horaDormir * 60 + minutosDormir;
@@ -368,6 +469,7 @@ void setLuz(int pin, int intensidad) {
 
 void mostrarPantallaPrincipal() {
   oled.clear();
+  
   // Primera línea: Hora y versión
   oled.print(" ");
   oled.print(now.hour());
@@ -375,19 +477,47 @@ void mostrarPantallaPrincipal() {
   if (now.minute() < 10) oled.print("0");
   oled.print(now.minute());
   oled.println("                   iTronix");
-  // oled.println(version);
   
-  // Opciones con estado [On]/[Off] actualizado inmediatamente
-  if (opcionSeleccionada == 0) {
-    oled.print(">Sleep mode [");
-    oled.print(botonPresionado ? "On" : "Off");
-    oled.println("]");
-    oled.println(" Settings");
-  } else {
-    oled.print(" Sleep mode [");
-    oled.print(botonPresionado ? "On" : "Off");
-    oled.println("]");
-    oled.println(">Settings");
+  // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
+  int opcionInicial = (opcionSeleccionada / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+  int opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalOpciones);
+  
+  // Mostrar las opciones correspondientes
+  for (int i = opcionInicial; i < opcionFinal; i++) {
+    if (i == opcionSeleccionada) {
+      oled.print(">");
+    } else {
+      oled.print(" ");
+    }
+    
+    switch(i) {
+      case 0: // Sleep mode
+        oled.print("Sleep mode [");
+        oled.print(botonPresionado ? "On" : "Off");
+        oled.println("]");
+        break;
+        
+      case 1: // 12-hour sleep
+        oled.print("12-hour sleep [");
+        oled.print(doceHorasSleep ? "On" : "Off");
+        oled.println("]");
+        break;
+        
+      case 2: // Force color
+        oled.print("Force color [");
+        oled.print(forceColorTexto[forceColor]);
+        oled.println("]");
+        break;
+        
+      case 3: // Settings
+        oled.println("Settings");
+        break;
+    }
+  }
+  
+  // Si hay menos opciones que el máximo, mostrar líneas vacías
+  for (int i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
+    oled.println();
   }
   
   // Navegación con indicador de posición
@@ -404,7 +534,6 @@ void mostrarMenuSettings() {
   oled.println(" Settings");
   
   // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
-  // settingScrollOffset será 0 para opciones 0-1, o 2 para opciones 2-3
   int opcionInicial = settingScrollOffset;
   int opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalSettingOpciones);
   
@@ -456,6 +585,59 @@ void mostrarMenuSettings() {
   oled.print("/");
   oled.print(totalSettingOpciones);
   oled.println("          Select");
+}
+
+void mostrarForceColorMenu() {
+  oled.clear();
+  // Título
+  oled.println(" Force color");
+  
+  // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
+  int opcionInicial = (forceColorOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+  int opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalForceColorOpciones);
+  
+  // Mostrar las opciones correspondientes
+  for (int i = opcionInicial; i < opcionFinal; i++) {
+    if (i == forceColorOpcion) {
+      oled.print(">");
+    } else {
+      oled.print(" ");
+    }
+    
+    switch(i) {
+      case 0: // Green
+        oled.println("Green");
+        break;
+        
+      case 1: // Yellow
+        oled.println("Yellow");
+        break;
+        
+      case 2: // Red
+        oled.println("Red");
+        break;
+        
+      case 3: // Off
+        oled.println("Off");
+        break;
+        
+      case 4: // Back
+        oled.println("Back");
+        break;
+    }
+  }
+  
+  // Si hay menos opciones que el máximo, mostrar líneas vacías
+  for (int i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
+    oled.println();
+  }
+  
+  // Navegación con indicador de posición
+  oled.print(" Move ");
+  oled.print(forceColorOpcion + 1);
+  oled.print("/");
+  oled.print(totalForceColorOpciones);
+  oled.println("          Apply");
 }
 
 void mostrarEdicionHora() {
