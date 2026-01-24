@@ -1,4 +1,4 @@
-String version = "1.25";  // Version actualizada con Game mode
+String version = "1.25";  // Version actualizada con corrección 12-hour sleep
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -27,7 +27,7 @@ int minutosTemporalReloj = 0;
 // Variables para 12-hour sleep y Force color
 bool doceHorasSleep = false;
 unsigned long inicioDoceHoras = 0;
-const unsigned long DOCE_HORAS_MS = 12 * 60 * 60 * 1000UL; // 12 horas en milisegundos
+const unsigned long DOCE_HORAS_MS = 12UL * 60UL * 60UL * 1000UL; // CORREGIDO: 12 horas en milisegundos
 
 int forceColor = 0; // 0=Off, 1=Green, 2=Yellow, 3=Red
 const char* forceColorTexto[] = {"Off", "G", "Y", "R"};
@@ -119,7 +119,10 @@ void setup() {
   mostrarPantallaPrincipal();
   pantallaApagada = false;
   
-  Serial.println("=== SISTEMA INICIADO - VERSION 5.0 (CON GAME MODE) ===");
+  Serial.println("=== SISTEMA INICIADO - VERSION 1.25 (12-HOUR SLEEP FIX) ===");
+  Serial.print("12-hour sleep configurado a: ");
+  Serial.print(DOCE_HORAS_MS / 1000 / 60 / 60);
+  Serial.println(" horas");
   Serial.println("Configuración Game mode:");
   Serial.print("  Verde: "); Serial.print(TIEMPO_VERDE_JUEGO/1000); Serial.println(" segundos");
   Serial.print("  Amarillo: "); Serial.print(TIEMPO_AMARILLO_JUEGO/1000); Serial.println(" segundos");
@@ -333,9 +336,11 @@ void procesarBotonSelect() {
       doceHorasSleep = !doceHorasSleep;
       if (doceHorasSleep) {
         inicioDoceHoras = millis();
-        Serial.println("12-hour sleep ACTIVADO - Inicio registrado");
+        Serial.print("12-hour sleep ACTIVADO - Inicio registrado a las ");
+        Serial.print(millis());
+        Serial.println(" ms");
       } else {
-        Serial.println("12-hour sleep DESACTIVADO");
+        Serial.println("12-hour sleep DESACTIVADO manualmente");
       }
       mostrarPantallaPrincipal();
     }
@@ -427,7 +432,8 @@ void manejarLuces() {
   // Verificar si 12-hour sleep ha terminado
   if (doceHorasSleep && (millis() - inicioDoceHoras >= DOCE_HORAS_MS)) {
     doceHorasSleep = false;
-    Serial.println("12-hour sleep COMPLETADO - Desactivado automáticamente");
+    Serial.print("12-hour sleep COMPLETADO - Desactivado automáticamente a las ");
+    Serial.println(millis());
   }
 
   // 1. FORCE COLOR tiene prioridad máxima
