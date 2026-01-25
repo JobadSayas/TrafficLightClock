@@ -1,4 +1,4 @@
-String version = "1.25";  // Version actualizada con corrección 12-hour sleep
+String version = "1.26";  // Version actualizada con 12-hour sleep mejorado
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -27,7 +27,9 @@ int minutosTemporalReloj = 0;
 // Variables para 12-hour sleep y Force color
 bool doceHorasSleep = false;
 unsigned long inicioDoceHoras = 0;
-const unsigned long DOCE_HORAS_MS = 12UL * 60UL * 60UL * 1000UL; // CORREGIDO: 12 horas en milisegundos
+const unsigned long DOCE_HORAS_MS = 12UL * 60UL * 60UL * 1000UL; // 12 horas en milisegundos
+const unsigned long QUINCE_MINUTOS_MS = 15UL * 60UL * 1000UL;    // 15 minutos en milisegundos
+const unsigned long DOCE_HORAS_QUINCE_MIN_MS = DOCE_HORAS_MS + QUINCE_MINUTOS_MS; // 12h 15min
 
 int forceColor = 0; // 0=Off, 1=Green, 2=Yellow, 3=Red
 const char* forceColorTexto[] = {"Off", "G", "Y", "R"};
@@ -119,10 +121,10 @@ void setup() {
   mostrarPantallaPrincipal();
   pantallaApagada = false;
   
-  Serial.println("=== SISTEMA INICIADO - VERSION 1.25 (12-HOUR SLEEP FIX) ===");
+  Serial.println("=== SISTEMA INICIADO - VERSION 1.26 (12-HOUR SLEEP MEJORADO) ===");
   Serial.print("12-hour sleep configurado a: ");
-  Serial.print(DOCE_HORAS_MS / 1000 / 60 / 60);
-  Serial.println(" horas");
+  Serial.print(DOCE_HORAS_QUINCE_MIN_MS / 1000 / 60 / 60.0, 2);
+  Serial.println(" horas totales (12h + 15min transición)");
   Serial.println("Configuración Game mode:");
   Serial.print("  Verde: "); Serial.print(TIEMPO_VERDE_JUEGO/1000); Serial.println(" segundos");
   Serial.print("  Amarillo: "); Serial.print(TIEMPO_AMARILLO_JUEGO/1000); Serial.println(" segundos");
@@ -429,13 +431,6 @@ void manejarLuces() {
     botonPresionado = false;
   }
 
-  // Verificar si 12-hour sleep ha terminado
-  if (doceHorasSleep && (millis() - inicioDoceHoras >= DOCE_HORAS_MS)) {
-    doceHorasSleep = false;
-    Serial.print("12-hour sleep COMPLETADO - Desactivado automáticamente a las ");
-    Serial.println(millis());
-  }
-
   // 1. FORCE COLOR tiene prioridad máxima
   if (forceColor > 0) {
     switch(forceColor) {
@@ -458,10 +453,37 @@ void manejarLuces() {
     return;
   }
 
-  // 3. 12-HOUR SLEEP (rojo tenue por 12 horas)
+  // 3. 12-HOUR SLEEP MEJORADO (con transiciones)
   if (doceHorasSleep) {
-    setLuz(ledRojo, intensidadRojoTenue);
-    return;
+    unsigned long tiempoTranscurrido = millis() - inicioDoceHoras;
+    
+    // Verificar si ya terminó completamente (12h 15min)
+    if (tiempoTranscurrido >= DOCE_HORAS_QUINCE_MIN_MS) {
+      doceHorasSleep = false;
+      Serial.print("12-hour sleep COMPLETADO - Desactivado automáticamente a las ");
+      Serial.println(millis());
+      return; // Salir para que continúe con lógica normal
+    }
+    
+    // Últimos 15 minutos de las 12 horas: AMARILLO TENUE
+    else if (tiempoTranscurrido >= (DOCE_HORAS_MS - QUINCE_MINUTOS_MS)) {
+      // Mostrar amarillo tenue los últimos 15 minutos
+      setLuz(ledAmarillo, intensidadAmarilloTenue);
+      return;
+    }
+    
+    // Después de 12 horas: VERDE TENUE por 15 minutos
+    else if (tiempoTranscurrido >= DOCE_HORAS_MS) {
+      // Mostrar verde tenue por 15 minutos después de las 12 horas
+      setLuz(ledVerde, intensidadVerdeTenue);
+      return;
+    }
+    
+    // Primeras 11 horas 45 minutos: ROJO TENUE
+    else {
+      setLuz(ledRojo, intensidadRojoTenue);
+      return;
+    }
   }
 
   // 4. GAME MODE (nuevo - semáforo de juego)
