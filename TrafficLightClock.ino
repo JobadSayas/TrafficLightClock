@@ -1,4 +1,4 @@
-String version = "1.27";  // Version con Nap Mode corregido
+String version = "1.28.1";  // Version con Nap Mode corregido
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -20,17 +20,18 @@ int minutosDespertar = 30;
 int horaDormir = 19;
 int minutosDormir = 30;
 
-// Variables para Nap Mode (nuevo)
+// Variables para Nap Mode (nuevo sistema: inicio + duración)
 bool napActivo = false; // Estado del nap
 int napHoraInicio = 13; // Hora de inicio del nap (1 PM)
 int napMinutoInicio = 0; // Minuto de inicio del nap
-int napHoraFin = 14; // Hora de fin del nap (2 PM)
-int napMinutoFin = 30; // Minuto de fin del nap
+int napDuracionHoras = 1; // Duración en horas (1 hora)
+int napDuracionMinutos = 30; // Duración en minutos (30 minutos)
 bool enNapMenu = false; // Controlar si estamos en el menú de Nap
-int napMenuOpcion = 0; // 0=Nap toggle, 1=Horario, 2=Back
+int napMenuOpcion = 0; // 0=Nap toggle, 1=Start, 2=Duration, 3=Back
 bool napEditando = false; // Estamos editando el horario?
-int napEditandoCampo = 0; // 0=Inicio hora, 1=Inicio minuto, 2=Fin hora, 3=Fin minuto
-const int napTotalOpciones = 3; // Nap toggle, Horario, Back
+bool napEditandoStart = true; // true=Editando Start, false=Editando Duration
+int napEditandoCampo = 0; // 0=hora/horas, 1=minuto/minutos
+const int napTotalOpciones = 4; // Nap toggle, Start, Duration, Back
 
 // Variables temporales para edición de reloj
 int horaTemporalReloj = 0;
@@ -131,7 +132,7 @@ void setup() {
   mostrarPantallaPrincipal();
   pantallaApagada = false;
   
-  Serial.println("=== SISTEMA INICIADO - VERSION 1.27.5 (NAP MODE FINAL) ===");
+  Serial.println("=== SISTEMA INICIADO - VERSION 1.28.1 (NAP MODE CORREGIDO) ===");
   Serial.print("12-hour sleep configurado a: ");
   Serial.print(DOCE_HORAS_QUINCE_MIN_MS / 1000 / 60 / 60.0, 2);
   Serial.println(" horas totales (12h + 15min transición)");
@@ -334,6 +335,7 @@ void procesarBotonSelect() {
       napMenuOpcion = 0;
       napEditando = false;
       napEditandoCampo = 0;
+      napEditandoStart = true;
       mostrarNapMenu();
     }
     else if (settingOpcion == 3) { // Clock setup
@@ -410,12 +412,18 @@ void procesarBotonSelect() {
 void procesarBotonSelectNapMenu() {
   if (napEditando) {
     // Estamos editando los horarios
-    if (napEditandoCampo < 3) {
-      napEditandoCampo++; // Pasar al siguiente campo
+    if (napEditandoCampo == 0) {
+      napEditandoCampo = 1; // Cambiar a editar minutos
     } else {
-      // Último campo (minuto fin), salir del modo edición
+      // Último campo (minutos), salir del modo edición
       napEditando = false;
       napEditandoCampo = 0;
+      // Regresar a la opción que estábamos editando
+      if (napEditandoStart) {
+        napMenuOpcion = 1; // Volver a Start
+      } else {
+        napMenuOpcion = 2; // Volver a Duration
+      }
     }
   } else {
     // No estamos editando, estamos en el menú principal
@@ -425,11 +433,17 @@ void procesarBotonSelectNapMenu() {
         Serial.print("Nap ");
         Serial.println(napActivo ? "ACTIVADO" : "DESACTIVADO");
         break;
-      case 1: // Horario - Entrar a editar
+      case 1: // Start - Entrar a editar hora de inicio
         napEditando = true;
-        napEditandoCampo = 0; // Comenzar con la hora de inicio
+        napEditandoStart = true;
+        napEditandoCampo = 0; // Comenzar con la hora
         break;
-      case 2: // Back - Volver a Settings
+      case 2: // Duration - Entrar a editar duración
+        napEditando = true;
+        napEditandoStart = false;
+        napEditandoCampo = 0; // Comenzar con las horas
+        break;
+      case 3: // Back - Volver a Settings
         enNapMenu = false;
         enMenuSettings = true;
         mostrarMenuSettings();
@@ -501,19 +515,24 @@ void procesarBotonMove() {
 void procesarBotonMoveNapMenu() {
   if (napEditando) {
     // Estamos editando los horarios
-    switch (napEditandoCampo) {
-      case 0: // Editando hora de inicio
+    if (napEditandoStart) {
+      // Editando START
+      if (napEditandoCampo == 0) {
+        // Editando hora de inicio
         napHoraInicio = (napHoraInicio + 1) % 24;
-        break;
-      case 1: // Editando minuto de inicio (de 5 en 5 minutos)
+      } else {
+        // Editando minuto de inicio (de 5 en 5 minutos)
         napMinutoInicio = (napMinutoInicio + 5) % 60;
-        break;
-      case 2: // Editando hora de fin
-        napHoraFin = (napHoraFin + 1) % 24;
-        break;
-      case 3: // Editando minuto de fin (de 5 en 5 minutos)
-        napMinutoFin = (napMinutoFin + 5) % 60;
-        break;
+      }
+    } else {
+      // Editando DURATION
+      if (napEditandoCampo == 0) {
+        // Editando horas de duración (1-23)
+        napDuracionHoras = (napDuracionHoras % 23) + 1;
+      } else {
+        // Editando minutos de duración (de 5 en 5 minutos)
+        napDuracionMinutos = (napDuracionMinutos + 5) % 60;
+      }
     }
   } else {
     // No estamos editando horarios, cambiar entre opciones del menú
@@ -589,18 +608,12 @@ void manejarLuces() {
     return;
   }
 
-  // 5. NAP MODE (nuevo)
+  // 5. NAP MODE (nuevo - por ahora solo placeholder)
   if (napActivo) {
-    int tiempoActual = now.hour() * 60 + now.minute();
-    int tiempoNapInicio = napHoraInicio * 60 + napMinutoInicio;
-    int tiempoNapFin = napHoraFin * 60 + napMinutoFin;
-    
-    // Verificar si estamos dentro del horario del nap
-    if (tiempoActual >= tiempoNapInicio && tiempoActual < tiempoNapFin) {
-      // Durante el nap: rojo tenue
-      setLuz(ledRojo, intensidadRojoTenue);
-      return;
-    }
+    // TODO: Implementar lógica de nap con inicio + duración
+    // Por ahora solo placeholder
+    // setLuz(ledRojo, intensidadRojoTenue);
+    // return;
   }
 
   // 6. LÓGICA NORMAL DE HORARIOS
@@ -785,16 +798,26 @@ void mostrarMenuSettings() {
       case 2: // Nap
         oled.print("Nap ");
         if (napActivo) {
+          // Calcular hora de fin
+          int horaFin = napHoraInicio + napDuracionHoras;
+          int minutoFin = napMinutoInicio + napDuracionMinutos;
+          if (minutoFin >= 60) {
+            horaFin++;
+            minutoFin -= 60;
+          }
+          if (horaFin >= 24) horaFin -= 24;
+          
           oled.print("[On] ");
           oled.print(napHoraInicio);
           oled.print(":");
           if (napMinutoInicio < 10) oled.print("0");
           oled.print(napMinutoInicio);
-          oled.print("-");
-          oled.print(napHoraFin);
-          oled.print(":");
-          if (napMinutoFin < 10) oled.print("0");
-          oled.print(napMinutoFin);
+          oled.print(" (");
+          oled.print(napDuracionHoras);
+          oled.print("h ");
+          if (napDuracionMinutos < 10) oled.print("0");
+          oled.print(napDuracionMinutos);
+          oled.print("m)");
         } else {
           oled.print("[Off]");
         }
@@ -835,108 +858,111 @@ void mostrarNapMenu() {
   oled.println(" NAP SETUP");
   
   if (napEditando) {
-    // MODO EDICIÓN DE HORARIO
-    // Mostrar estado del nap
-    oled.print(" Nap [");
-    oled.print(napActivo ? "On" : "Off");
-    oled.println("]");
-    
-    // Mostrar horario sin "Time:" y con cursor
-    // Espacio para alinear con el cursor ">"
-    if (napEditandoCampo == 0) {
-      oled.print(">");
+    // MODO EDICIÓN
+    if (napEditandoStart) {
+      // Editando START
+      oled.print("Nap [");
+      oled.print(napActivo ? "On" : "Off");
+      oled.println("]");
+      
+      oled.print("Start: ");
+      if (napEditandoCampo == 0) {
+        oled.print(">");
+      } else {
+        oled.print(" ");
+      }
+      oled.print(napHoraInicio);
+      oled.print(":");
+      
+      if (napEditandoCampo == 1) {
+        oled.print(">");
+      } else {
+        oled.print(" ");
+      }
+      if (napMinutoInicio < 10) oled.print("0");
+      oled.print(napMinutoInicio);
+      oled.println();
+      
+      oled.println();
+      oled.print(" Change            Apply");
     } else {
-      oled.print(" ");
+      // Editando DURATION
+      oled.print("Duration: ");
+      if (napEditandoCampo == 0) {
+        oled.print(">");
+      } else {
+        oled.print(" ");
+      }
+      oled.print(napDuracionHoras);
+      oled.print("h ");
+      
+      if (napEditandoCampo == 1) {
+        oled.print(">");
+      } else {
+        oled.print(" ");
+      }
+      if (napDuracionMinutos < 10) oled.print("0");
+      oled.print(napDuracionMinutos);
+      oled.print("m");
+      oled.println();
+      
+      oled.println("Back");
+      oled.println();
+      oled.print(" Change            Apply");
     }
-    oled.print(napHoraInicio);
-    oled.print(":");
-    
-    if (napEditandoCampo == 1) {
-      oled.print(">");
-    } else {
-      oled.print(" ");
-    }
-    if (napMinutoInicio < 10) oled.print("0");
-    oled.print(napMinutoInicio);
-    
-    oled.print(" - ");
-    if (napEditandoCampo == 2) {
-      oled.print(">");
-    } else {
-      oled.print(" ");
-    }
-    oled.print(napHoraFin);
-    oled.print(":");
-    
-    if (napEditandoCampo == 3) {
-      oled.print(">");
-    } else {
-      oled.print(" ");
-    }
-    if (napMinutoFin < 10) oled.print("0");
-    oled.print(napMinutoFin);
-    oled.println();
-    
-    // Instrucciones
-    oled.println();
-    oled.print(" Change            Apply");
     
   } else {
     // MODO NORMAL DEL MENÚ
-    if (napMenuOpcion == 0) {
-      // Posición 1: Nap toggle
-      oled.print(">");
-      oled.print("Nap [");
-      oled.print(napActivo ? "On" : "Off");
-      oled.println("]");
+    // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
+    int opcionInicial = (napMenuOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+    int opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, napTotalOpciones);
+    
+    // Mostrar las opciones correspondientes
+    for (int i = opcionInicial; i < opcionFinal; i++) {
+      if (i == napMenuOpcion) {
+        oled.print(">");
+      } else {
+        oled.print(" ");
+      }
       
-      oled.print(" ");
-      oled.print("Time: ");
-      oled.print(napHoraInicio);
-      oled.print(":");
-      if (napMinutoInicio < 10) oled.print("0");
-      oled.print(napMinutoInicio);
-      oled.print("-");
-      oled.print(napHoraFin);
-      oled.print(":");
-      if (napMinutoFin < 10) oled.print("0");
-      oled.print(napMinutoFin);
-      oled.println();
-      
-      // Línea 3 vacía
-      oled.println();
-    } 
-    else if (napMenuOpcion == 1) {
-      // Posición 2: Horario
-      oled.print(" ");
-      oled.print("Nap [");
-      oled.print(napActivo ? "On" : "Off");
-      oled.println("]");
-      
-      oled.print(">");
-      oled.print("Time: ");
-      oled.print(napHoraInicio);
-      oled.print(":");
-      if (napMinutoInicio < 10) oled.print("0");
-      oled.print(napMinutoInicio);
-      oled.print(" - ");
-      oled.print(napHoraFin);
-      oled.print(":");
-      if (napMinutoFin < 10) oled.print("0");
-      oled.print(napMinutoFin);
-      oled.println();
-      
-      // Línea 3 vacía
-      oled.println();
-    }
-    else if (napMenuOpcion == 2) {
-      // Posición 3: Back - Mostrar en la línea 2 (después del título)
-      oled.print(">");
-      oled.println("Back");
-      oled.println(); // Línea 4 vacía
+      switch(i) {
+        case 0: // Nap toggle
+          oled.print("Nap [");
+          oled.print(napActivo ? "On" : "Off");
+          oled.println("]");
+          break;
+          
+        case 1: // Start
+          oled.print("Start: ");
+          oled.print(napHoraInicio);
+          oled.print(":");
+          if (napMinutoInicio < 10) oled.print("0");
+          oled.print(napMinutoInicio);
+          oled.println();
+          break;
+          
+        case 2: // Duration
+          oled.print("Duration: ");
+          oled.print(napDuracionHoras);
+          oled.print("h ");
+          if (napDuracionMinutos < 10) oled.print("0");
+          oled.print(napDuracionMinutos);
+          oled.print("m");
+          oled.println();
+          break;
+          
+        case 3: // Back
+          oled.println("Back");
+          break;
+      }
     }
     
-    // Mostrar instrucciones según la opción seleccionada (línea 5)
+    // Si hay menos opciones que el máximo, mostrar líneas vacías
+    for (int i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
+      oled.println();
+    }
+    
+    // Mostrar instrucciones según la opción seleccionada
     oled.println();
     oled.print(" Move ");
     oled.print(napMenuOpcion + 1);
@@ -945,9 +971,9 @@ void mostrarNapMenu() {
     
     if (napMenuOpcion == 0) {
       oled.print("          Toggle");
-    } else if (napMenuOpcion == 1) {
+    } else if (napMenuOpcion == 1 || napMenuOpcion == 2) {
       oled.print("          Edit");
-    } else if (napMenuOpcion == 2) {
+    } else if (napMenuOpcion == 3) {
       oled.print("          Select");
     }
   }
