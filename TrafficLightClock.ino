@@ -1,12 +1,11 @@
-String version = "1.28.1";  // Version con Nap Mode corregido
+// VERSION: 1.29 - Nap Mode completo optimizado
 
 #include <Wire.h>
 #include <RTClib.h>
 #include <SSD1306Ascii.h>
 #include <SSD1306AsciiWire.h>
 
-// Variables globales
-String status = "--";
+// Variables globales optimizadas
 int ultimoMinutoImpreso = -1;
 unsigned long ultimaInteraccion = 0;
 const unsigned long TIEMPO_PANTALLA_ACTIVA = 30000; // 30 segundos
@@ -14,28 +13,36 @@ bool pantallaApagada = false;
 unsigned long tiempoEncendidoPantalla = 0; // Para controlar el bloqueo temporal
 const unsigned long TIEMPO_BLOQUEO_BOTONES = 300; // 300ms de bloqueo después de encender
 
-// Horarios (editables)
-int horaDespertar = 7;
-int minutosDespertar = 30;
-int horaDormir = 19;
-int minutosDormir = 30;
+// Horarios (editables) - optimizado a uint8_t
+uint8_t horaDespertar = 7;
+uint8_t minutosDespertar = 30;
+uint8_t horaDormir = 19;
+uint8_t minutosDormir = 30;
 
-// Variables para Nap Mode (nuevo sistema: inicio + duración)
+// Variables para Nap Mode (nuevo sistema completo) - optimizado a uint8_t
 bool napActivo = false; // Estado del nap
-int napHoraInicio = 13; // Hora de inicio del nap (1 PM)
-int napMinutoInicio = 0; // Minuto de inicio del nap
-int napDuracionHoras = 1; // Duración en horas (1 hora)
-int napDuracionMinutos = 30; // Duración en minutos (30 minutos)
+uint8_t napHoraInicio = 13; // Hora de inicio del nap (1 PM)
+uint8_t napMinutoInicio = 0; // Minuto de inicio del nap
+uint8_t napDuracionHoras = 1; // Duración en horas (1 hora)
+uint8_t napDuracionMinutos = 30; // Duración en minutos (30 minutos)
 bool enNapMenu = false; // Controlar si estamos en el menú de Nap
-int napMenuOpcion = 0; // 0=Nap toggle, 1=Start, 2=Duration, 3=Back
+uint8_t napMenuOpcion = 0; // 0=Nap toggle, 1=Start, 2=Duration, 3=Back
 bool napEditando = false; // Estamos editando el horario?
 bool napEditandoStart = true; // true=Editando Start, false=Editando Duration
-int napEditandoCampo = 0; // 0=hora/horas, 1=minuto/minutos
-const int napTotalOpciones = 4; // Nap toggle, Start, Duration, Back
+uint8_t napEditandoCampo = 0; // 0=hora/horas, 1=minuto/minutos
+const uint8_t napTotalOpciones = 4; // Nap toggle, Start, Duration, Back
 
-// Variables temporales para edición de reloj
-int horaTemporalReloj = 0;
-int minutosTemporalReloj = 0;
+// NUEVAS VARIABLES PARA NAP MODE COMPLETO
+unsigned long inicioSiestaReal = 0; // Cuando se activa Sleep Mode para siesta
+bool modoSiestaActivo = false; // Indica si estamos en modo siesta (rojo tenue + verde tenue)
+bool enVerdeExtraSiesta = false; // Indica si estamos en la hora extra de verde tenue
+const uint8_t UMBRAL_HORA_SIESTA = 17; // 5:00 PM - límite entre siesta y noche
+unsigned long tiempoFinSiesta = 0; // Cuando termina el rojo tenue de la siesta
+unsigned long tiempoFinVerdeExtra = 0; // Cuando termina la hora extra verde
+
+// Variables temporales para edición de reloj - optimizado a uint8_t
+uint8_t horaTemporalReloj = 0;
+uint8_t minutosTemporalReloj = 0;
 
 // Variables para 12-hour sleep y Force color
 bool doceHorasSleep = false;
@@ -44,17 +51,16 @@ const unsigned long DOCE_HORAS_MS = 12UL * 60UL * 60UL * 1000UL; // 12 horas en 
 const unsigned long QUINCE_MINUTOS_MS = 15UL * 60UL * 1000UL;    // 15 minutos en milisegundos
 const unsigned long DOCE_HORAS_QUINCE_MIN_MS = DOCE_HORAS_MS + QUINCE_MINUTOS_MS; // 12h 15min
 
-int forceColor = 0; // 0=Off, 1=Green, 2=Yellow, 3=Red
-const char* forceColorTexto[] = {"Off", "G", "Y", "R"};
+uint8_t forceColor = 0; // 0=Off, 1=Green, 2=Yellow, 3=Red
+const char forceColorTexto[] PROGMEM = "Off\0G\0Y\0R"; // PROGMEM para texto
 
 // Variables para Game mode (nuevo)
 bool gameMode = false;
 unsigned long inicioGameMode = 0;
 unsigned long ultimoCambioGameMode = 0;
-int estadoGameMode = 0; // 0=Green, 1=Yellow, 2=Red
+uint8_t estadoGameMode = 0; // 0=Green, 1=Yellow, 2=Red
 
 // ==================== CONFIGURACIÓN DE MODO JUEGO ====================
-// Puedes ajustar estos tiempos según necesites
 const unsigned long TIEMPO_VERDE_JUEGO = 20000;   // 20 segundos en verde
 const unsigned long TIEMPO_AMARILLO_JUEGO = 3000; // 3 segundos en amarillo
 const unsigned long TIEMPO_ROJO_JUEGO = 10000;    // 10 segundos en rojo
@@ -67,58 +73,74 @@ const int ledRojo = 11;
 const int moveButton = 2;
 const int selectButton = 3;
 
-// Estados
+// Estados - optimizado a uint8_t
 bool botonPresionado = false;
 bool enMenuSettings = false;
 bool enMenuAbout = false;           // Nueva variable para controlar pantalla About
 bool editandoHora = false;
 bool editandoReloj = false;          // Para diferenciar si estamos editando el reloj
-int opcionSeleccionada = 0;          // 0=Sleep mode, 1=12-hour sleep, 2=Force color, 3=Game mode, 4=Settings
-int settingOpcion = 0;               // 0=Wake up, 1=Sleep at, 2=Nap, 3=Clock setup, 4=About, 5=Back
-int editandoCampo = 0;               // 0=hora, 1=minutos
+uint8_t opcionSeleccionada = 0;      // 0=Sleep mode, 1=12-hour sleep, 2=Force color, 3=Game mode, 4=Settings
+uint8_t settingOpcion = 0;           // 0=Wake up, 1=Sleep at, 2=Nap, 3=Clock setup, 4=About, 5=Back
+uint8_t editandoCampo = 0;           // 0=hora, 1=minutos
 bool editandoWakeUp = true;          // true=Wake up, false=Sleep at
-const int totalOpciones = 5;         // Cambiado de 4 a 5 (agregamos Game mode)
-const int totalSettingOpciones = 6;  // Cambiado de 4 a 6 (agregamos Nap y About)
-int settingScrollOffset = 0;         // Para controlar qué opciones mostrar en pantalla
-const int MAX_OPCIONES_POR_PANTALLA = 2; // Máximo de opciones visibles a la vez
+const uint8_t totalOpciones = 5;     // Cambiado de 4 a 5 (agregamos Game mode)
+const uint8_t totalSettingOpciones = 6;  // Cambiado de 4 a 6 (agregamos Nap y About)
+uint8_t settingScrollOffset = 0;     // Para controlar qué opciones mostrar en pantalla
+const uint8_t MAX_OPCIONES_POR_PANTALLA = 2; // Máximo de opciones visibles a la vez
 
 // Nueva variable para Force color menu
 bool enForceColorMenu = false;
-int forceColorOpcion = 0;            // 0=Green, 1=Yellow, 2=Red, 3=Off, 4=Back
-const int totalForceColorOpciones = 5;
+uint8_t forceColorOpcion = 0;        // 0=Green, 1=Yellow, 2=Red, 3=Off, 4=Back
+const uint8_t totalForceColorOpciones = 5;
 
 // RTC
 RTC_DS3231 rtc;
 DateTime now;
 
 // Intensidades
-const int intensidadRojoMax = 100;
-const int intensidadAmarilloMax = 255;
-const int intensidadVerdeMax = 100;
-const int intensidadRojoTenue = 3;
-const int intensidadAmarilloTenue = 10;
-const int intensidadVerdeTenue = 3;
+const uint8_t intensidadRojoMax = 100;
+const uint8_t intensidadAmarilloMax = 255;
+const uint8_t intensidadVerdeMax = 100;
+const uint8_t intensidadRojoTenue = 3;
+const uint8_t intensidadAmarilloTenue = 10;
+const uint8_t intensidadVerdeTenue = 3;
 
 // OLED
 SSD1306AsciiWire oled;
 #define OLED_ADDRESS 0x3C
 
+// Función para obtener texto de forceColor desde PROGMEM
+const char* getForceColorTexto(uint8_t index) {
+  static char buffer[4];
+  const char *ptr = forceColorTexto;
+  
+  for(uint8_t i = 0; i < index; i++) {
+    while(pgm_read_byte(ptr)) ptr++;
+    ptr++; // saltar el null terminator
+  }
+  
+  uint8_t j = 0;
+  char c;
+  while((c = pgm_read_byte(ptr++)) && j < 3) {
+    buffer[j++] = c;
+  }
+  buffer[j] = '\0';
+  return buffer;
+}
+
 void setup() {
   Serial.begin(9600);
 
   if (!rtc.begin()) {
-    Serial.println("Error: No se encuentra el módulo RTC.");
+    Serial.println(F("Error: No se encuentra el módulo RTC."));
     while (1);
   }
 
   // Verificar si el RTC perdió la hora (fecha muy antigua)
   now = rtc.now();
   if (now.year() < 2024) {
-    Serial.println("ADVERTENCIA: RTC parece tener hora incorrecta. Usa Clock setup para ajustar.");
+    Serial.println(F("ADVERTENCIA: RTC parece tener hora incorrecta. Usa Clock setup para ajustar."));
   }
-
-  // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  // rtc.adjust(DateTime(2025, 1, 12, 19, 15, 0)); // Formato: (año, mes, día, hora, minuto, segundo)
 
   pinMode(ledVerde, OUTPUT);
   pinMode(ledAmarillo, OUTPUT);
@@ -132,14 +154,13 @@ void setup() {
   mostrarPantallaPrincipal();
   pantallaApagada = false;
   
-  Serial.println("=== SISTEMA INICIADO - VERSION 1.28.1 (NAP MODE CORREGIDO) ===");
-  Serial.print("12-hour sleep configurado a: ");
+  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.29 (NAP MODE COMPLETO OPTIMIZADO) ==="));
+  Serial.print(F("12-hour sleep configurado a: "));
   Serial.print(DOCE_HORAS_QUINCE_MIN_MS / 1000 / 60 / 60.0, 2);
-  Serial.println(" horas totales (12h + 15min transición)");
-  Serial.println("Configuración Game mode:");
-  Serial.print("  Verde: "); Serial.print(TIEMPO_VERDE_JUEGO/1000); Serial.println(" segundos");
-  Serial.print("  Amarillo: "); Serial.print(TIEMPO_AMARILLO_JUEGO/1000); Serial.println(" segundos");
-  Serial.print("  Rojo: "); Serial.print(TIEMPO_ROJO_JUEGO/1000); Serial.println(" segundos");
+  Serial.println(F(" horas totales (12h + 15min transición)"));
+  Serial.println(F("Configuración Nap Mode:"));
+  Serial.print(F("  Umbral siesta/noche: ")); Serial.print(UMBRAL_HORA_SIESTA); Serial.println(F(":00 (5:00 PM)"));
+  Serial.println(F("  Hora extra verde tenue: 60 minutos"));
 }
 
 void loop() {
@@ -148,10 +169,10 @@ void loop() {
   int minuto = now.minute();
 
   if (minuto != ultimoMinutoImpreso) {
-    Serial.print("Hora actual: ");
+    Serial.print(F("Hora actual: "));
     Serial.print(hora);
-    Serial.print(":");
-    if (minuto < 10) Serial.print("0");
+    Serial.print(F(":"));
+    if (minuto < 10) Serial.print(F("0"));
     Serial.println(minuto);
 
     ultimoMinutoImpreso = minuto;
@@ -166,12 +187,97 @@ void loop() {
 
   // Control de timeout de pantalla
   if (!pantallaApagada && (millis() - ultimaInteraccion > TIEMPO_PANTALLA_ACTIVA)) {
-    // Apagar pantalla después de 30 segundos de inactividad - sin condiciones adicionales
     oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
     pantallaApagada = true;
   }
 
   delay(100);
+}
+
+// ======================================================
+// FUNCIONES PARA NAP MODE COMPLETO
+// ======================================================
+
+bool esAntesDeUmbralSiesta() {
+  // Retorna true si la hora actual es antes de las 5:00 PM (17:00)
+  return (now.hour() < UMBRAL_HORA_SIESTA);
+}
+
+bool estaDentroPlaceholderSiesta() {
+  // Verifica si estamos dentro del placeholder de siesta (para avisos)
+  if (!napActivo) return false;
+  
+  int tiempoActual = now.hour() * 60 + now.minute();
+  int tiempoNapInicio = napHoraInicio * 60 + napMinutoInicio;
+  int tiempoNapFin = tiempoNapInicio + (napDuracionHoras * 60) + napDuracionMinutos;
+  
+  return (tiempoActual >= tiempoNapInicio && tiempoActual < tiempoNapFin);
+}
+
+bool estaEnAvisoPrevioSiesta() {
+  // Verifica si estamos en los 30 minutos previos a la siesta
+  if (!napActivo) return false;
+  
+  int tiempoActual = now.hour() * 60 + now.minute();
+  int tiempoNapInicio = napHoraInicio * 60 + napMinutoInicio;
+  
+  return (tiempoActual >= (tiempoNapInicio - 30) && tiempoActual < tiempoNapInicio);
+}
+
+void iniciarModoSiesta() {
+  // Llamado cuando se activa Sleep Mode antes del umbral (5:00 PM)
+  modoSiestaActivo = true;
+  enVerdeExtraSiesta = false;
+  inicioSiestaReal = millis();
+  
+  // Calcular tiempo de fin de siesta (duración configurada)
+  unsigned long duracionSiestaMs = (napDuracionHoras * 60UL * 60UL * 1000UL) + 
+                                   (napDuracionMinutos * 60UL * 1000UL);
+  tiempoFinSiesta = inicioSiestaReal + duracionSiestaMs;
+  
+  Serial.print(F("MODO SIESTA INICIADO - "));
+  Serial.print(F("Duración: "));
+  Serial.print(napDuracionHoras);
+  Serial.print(F("h "));
+  Serial.print(napDuracionMinutos);
+  Serial.print(F("m - "));
+  Serial.print(F("Terminará rojo tenue a las "));
+  Serial.print(tiempoFinSiesta);
+  Serial.println(F(" ms"));
+}
+
+void finalizarModoSiesta() {
+  modoSiestaActivo = false;
+  Serial.println(F("MODO SIESTA FINALIZADO - Pasando a verde tenue por 1 hora"));
+}
+
+void manejarModoSiesta() {
+  unsigned long tiempoActual = millis();
+  
+  if (enVerdeExtraSiesta) {
+    // Estamos en la hora extra de verde tenue
+    if (tiempoActual >= tiempoFinVerdeExtra) {
+      // Terminó completamente el modo siesta
+      modoSiestaActivo = false;
+      enVerdeExtraSiesta = false;
+      Serial.println(F("HORA EXTRA VERDE FINALIZADA - Comportamiento normal"));
+    } else {
+      // Mostrar verde tenue durante la hora extra
+      setLuz(ledVerde, intensidadVerdeTenue);
+    }
+  } else if (modoSiestaActivo) {
+    // Estamos en el período de rojo tenue de la siesta
+    if (tiempoActual >= tiempoFinSiesta) {
+      // Terminó el tiempo de siesta, iniciar hora extra verde
+      enVerdeExtraSiesta = true;
+      tiempoFinVerdeExtra = tiempoActual + (60UL * 60UL * 1000UL); // 1 hora
+      Serial.print(F("SIESTA COMPLETADA - Iniciando hora extra verde hasta "));
+      Serial.println(tiempoFinVerdeExtra);
+    } else {
+      // Mostrar rojo tenue durante la siesta
+      setLuz(ledRojo, intensidadRojoTenue);
+    }
+  }
 }
 
 bool modoTenueActivo() {
@@ -300,10 +406,10 @@ void procesarBotonSelect() {
         DateTime nuevaHora = DateTime(now.year(), now.month(), now.day(), 
                                       horaTemporalReloj, minutosTemporalReloj, 0);
         rtc.adjust(nuevaHora);
-        Serial.print("RTC ajustado a: ");
+        Serial.print(F("RTC ajustado a: "));
         Serial.print(horaTemporalReloj);
-        Serial.print(":");
-        if (minutosTemporalReloj < 10) Serial.print("0");
+        Serial.print(F(":"));
+        if (minutosTemporalReloj < 10) Serial.print(F("0"));
         Serial.println(minutosTemporalReloj);
       }
       
@@ -359,26 +465,47 @@ void procesarBotonSelect() {
   } else {
     // Menú principal
     if (opcionSeleccionada == 0) { // Sleep mode
+      bool estadoAnterior = botonPresionado;
       botonPresionado = !botonPresionado;
+      
       if (botonPresionado) {
+        // Sleep Mode ACTIVADO
         setLuz(ledRojo, intensidadRojoTenue);
-        mostrarPantallaPrincipal(); // Mostrar inmediatamente el estado [On]
-        Serial.println("Sleep mode ACTIVADO");
+        
+        // Verificar si es modo siesta o modo noche
+        if (napActivo && esAntesDeUmbralSiesta()) {
+          // Es antes de las 5:00 PM → Modo Siesta
+          iniciarModoSiesta();
+          Serial.println(F("Sleep mode ACTIVADO - MODO SIESTA"));
+        } else {
+          // Es después de las 5:00 PM → Modo Noche normal
+          modoSiestaActivo = false;
+          enVerdeExtraSiesta = false;
+          Serial.println(F("Sleep mode ACTIVADO - MODO NOCHE"));
+        }
+        mostrarPantallaPrincipal();
       } else {
+        // Sleep Mode DESACTIVADO
+        if (modoSiestaActivo || enVerdeExtraSiesta) {
+          modoSiestaActivo = false;
+          enVerdeExtraSiesta = false;
+          Serial.println(F("Sleep mode DESACTIVADO - Modo siesta cancelado"));
+        } else {
+          Serial.println(F("Sleep mode DESACTIVADO"));
+        }
         ultimoMinutoImpreso = -1;
         mostrarPantallaPrincipal();
-        Serial.println("Sleep mode DESACTIVADO");
       }
     }
     else if (opcionSeleccionada == 1) { // 12-hour sleep
       doceHorasSleep = !doceHorasSleep;
       if (doceHorasSleep) {
         inicioDoceHoras = millis();
-        Serial.print("12-hour sleep ACTIVADO - Inicio registrado a las ");
+        Serial.print(F("12-hour sleep ACTIVADO - Inicio registrado a las "));
         Serial.print(millis());
-        Serial.println(" ms");
+        Serial.println(F(" ms"));
       } else {
-        Serial.println("12-hour sleep DESACTIVADO manualmente");
+        Serial.println(F("12-hour sleep DESACTIVADO manualmente"));
       }
       mostrarPantallaPrincipal();
     }
@@ -393,9 +520,9 @@ void procesarBotonSelect() {
         inicioGameMode = millis();
         ultimoCambioGameMode = millis();
         estadoGameMode = 0; // Comienza en verde
-        Serial.println("Game mode ACTIVADO - Comienza en VERDE");
+        Serial.println(F("Game mode ACTIVADO - Comienza en VERDE"));
       } else {
-        Serial.println("Game mode DESACTIVADO");
+        Serial.println(F("Game mode DESACTIVADO"));
       }
       mostrarPantallaPrincipal();
     }
@@ -430,8 +557,8 @@ void procesarBotonSelectNapMenu() {
     switch (napMenuOpcion) {
       case 0: // Nap toggle
         napActivo = !napActivo;
-        Serial.print("Nap ");
-        Serial.println(napActivo ? "ACTIVADO" : "DESACTIVADO");
+        Serial.print(F("Nap "));
+        Serial.println(napActivo ? F("ACTIVADO") : F("DESACTIVADO"));
         break;
       case 1: // Start - Entrar a editar hora de inicio
         napEditando = true;
@@ -491,7 +618,7 @@ void procesarBotonMove() {
     mostrarEdicionHora();
   }
   else if (enMenuSettings) {
-    int nuevaOpcion = (settingOpcion + 1) % totalSettingOpciones;
+    uint8_t nuevaOpcion = (settingOpcion + 1) % totalSettingOpciones;
     settingOpcion = nuevaOpcion;
     
     // Calcular nuevo scroll offset basado en pares de opciones
@@ -500,12 +627,8 @@ void procesarBotonMove() {
     mostrarMenuSettings();
   } else {
     // Menú principal con scroll por pares
-    int nuevaOpcion = (opcionSeleccionada + 1) % totalOpciones;
+    uint8_t nuevaOpcion = (opcionSeleccionada + 1) % totalOpciones;
     opcionSeleccionada = nuevaOpcion;
-    
-    // Calcular scroll offset para menú principal (pares de 2)
-    static int mainScrollOffset = 0;
-    mainScrollOffset = (opcionSeleccionada / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
     
     mostrarPantallaPrincipal();
   }
@@ -528,7 +651,7 @@ void procesarBotonMoveNapMenu() {
       // Editando DURATION
       if (napEditandoCampo == 0) {
         // Editando horas de duración (1-23)
-        napDuracionHoras = (napDuracionHoras % 23) + 1;
+        napDuracionHoras = (napDuracionHoras + 1) % 4;
       } else {
         // Editando minutos de duración (de 5 en 5 minutos)
         napDuracionMinutos = (napDuracionMinutos + 5) % 60;
@@ -545,6 +668,8 @@ void manejarLuces() {
   // Verificar si es medianoche (00:00) para forzar salida del modo dormir
   if (now.hour() == 0 && now.minute() == 0) {
     botonPresionado = false;
+    modoSiestaActivo = false;
+    enVerdeExtraSiesta = false;
   }
 
   // 1. FORCE COLOR tiene prioridad máxima
@@ -563,9 +688,15 @@ void manejarLuces() {
     return;
   }
 
-  // 2. SLEEP MODE (rojo tenue siempre)
+  // 2. SLEEP MODE (con lógica dual siesta/noche)
   if (botonPresionado) {
-    setLuz(ledRojo, intensidadRojoTenue);
+    if (modoSiestaActivo || enVerdeExtraSiesta) {
+      // Estamos en modo siesta (ya sea rojo tenue o verde tenue extra)
+      manejarModoSiesta();
+    } else {
+      // Sleep Mode normal (noche) - rojo tenue siempre
+      setLuz(ledRojo, intensidadRojoTenue);
+    }
     return;
   }
 
@@ -576,7 +707,7 @@ void manejarLuces() {
     // Verificar si ya terminó completamente (12h 15min)
     if (tiempoTranscurrido >= DOCE_HORAS_QUINCE_MIN_MS) {
       doceHorasSleep = false;
-      Serial.print("12-hour sleep COMPLETADO - Desactivado automáticamente a las ");
+      Serial.print(F("12-hour sleep COMPLETADO - Desactivado automáticamente a las "));
       Serial.println(millis());
       return; // Salir para que continúe con lógica normal
     }
@@ -608,12 +739,21 @@ void manejarLuces() {
     return;
   }
 
-  // 5. NAP MODE (nuevo - por ahora solo placeholder)
-  if (napActivo) {
-    // TODO: Implementar lógica de nap con inicio + duración
-    // Por ahora solo placeholder
-    // setLuz(ledRojo, intensidadRojoTenue);
-    // return;
+  // 5. NAP MODE AVISOS Y COMPORTAMIENTO (solo si Nap está ON y NO estamos en Sleep Mode)
+  if (napActivo && !botonPresionado) {
+    // 5.1. Aviso amarillo 30 minutos antes de la siesta
+    if (estaEnAvisoPrevioSiesta()) {
+      setLuz(ledAmarillo, intensidadAmarilloMax);
+      return;
+    }
+    
+    // 5.2. Dentro del placeholder de siesta (pero NO hemos activado Sleep Mode)
+    if (estaDentroPlaceholderSiesta()) {
+      // Estamos dentro del horario de siesta pero no se ha activado Sleep Mode
+      // Mostrar rojo intenso para indicar que es hora de siesta
+      setLuz(ledRojo, intensidadRojoMax);
+      return;
+    }
   }
 
   // 6. LÓGICA NORMAL DE HORARIOS
@@ -657,7 +797,7 @@ void manejarGameMode() {
         // Cambiar a AMARILLO
         estadoGameMode = 1;
         ultimoCambioGameMode = tiempoActual;
-        Serial.println("Game mode: VERDE -> AMARILLO");
+        Serial.println(F("Game mode: VERDE -> AMARILLO"));
       } else {
         setLuz(ledVerde, intensidadVerdeMax);
       }
@@ -668,7 +808,7 @@ void manejarGameMode() {
         // Cambiar a ROJO
         estadoGameMode = 2;
         ultimoCambioGameMode = tiempoActual;
-        Serial.println("Game mode: AMARILLO -> ROJO");
+        Serial.println(F("Game mode: AMARILLO -> ROJO"));
       } else {
         setLuz(ledAmarillo, intensidadAmarilloMax);
       }
@@ -679,7 +819,7 @@ void manejarGameMode() {
         // Volver a VERDE (ciclo completo)
         estadoGameMode = 0;
         ultimoCambioGameMode = tiempoActual;
-        Serial.println("Game mode: ROJO -> VERDE (ciclo completo)");
+        Serial.println(F("Game mode: ROJO -> VERDE (ciclo completo)"));
       } else {
         setLuz(ledRojo, intensidadRojoMax);
       }
@@ -706,11 +846,11 @@ void mostrarPantallaPrincipal() {
   oled.println("              iTronnix");
   
   // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
-  int opcionInicial = (opcionSeleccionada / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
-  int opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalOpciones);
+  uint8_t opcionInicial = (opcionSeleccionada / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+  uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalOpciones);
   
   // Mostrar las opciones correspondientes
-  for (int i = opcionInicial; i < opcionFinal; i++) {
+  for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
     if (i == opcionSeleccionada) {
       oled.print(">");
     } else {
@@ -732,7 +872,7 @@ void mostrarPantallaPrincipal() {
         
       case 2: // Force color
         oled.print("Force color [");
-        oled.print(forceColorTexto[forceColor]);
+        oled.print(getForceColorTexto(forceColor));
         oled.println("]");
         break;
         
@@ -749,7 +889,7 @@ void mostrarPantallaPrincipal() {
   }
   
   // Si hay menos opciones que el máximo, mostrar líneas vacías
-  for (int i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
+  for (uint8_t i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
     oled.println();
   }
   
@@ -767,11 +907,11 @@ void mostrarMenuSettings() {
   oled.println(" SETTINGS");
   
   // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
-  int opcionInicial = settingScrollOffset;
-  int opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalSettingOpciones);
+  uint8_t opcionInicial = settingScrollOffset;
+  uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalSettingOpciones);
   
   // Mostrar las opciones correspondientes
-  for (int i = opcionInicial; i < opcionFinal; i++) {
+  for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
     if (i == settingOpcion) {
       oled.print(">");
     } else {
@@ -798,15 +938,6 @@ void mostrarMenuSettings() {
       case 2: // Nap
         oled.print("Nap ");
         if (napActivo) {
-          // Calcular hora de fin
-          int horaFin = napHoraInicio + napDuracionHoras;
-          int minutoFin = napMinutoInicio + napDuracionMinutos;
-          if (minutoFin >= 60) {
-            horaFin++;
-            minutoFin -= 60;
-          }
-          if (horaFin >= 24) horaFin -= 24;
-          
           oled.print("[On] ");
           oled.print(napHoraInicio);
           oled.print(":");
@@ -840,7 +971,7 @@ void mostrarMenuSettings() {
   }
   
   // Si hay menos opciones que el máximo, mostrar líneas vacías
-  for (int i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
+  for (uint8_t i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
     oled.println();
   }
   
@@ -914,11 +1045,11 @@ void mostrarNapMenu() {
   } else {
     // MODO NORMAL DEL MENÚ
     // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
-    int opcionInicial = (napMenuOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
-    int opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, napTotalOpciones);
+    uint8_t opcionInicial = (napMenuOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+    uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, napTotalOpciones);
     
     // Mostrar las opciones correspondientes
-    for (int i = opcionInicial; i < opcionFinal; i++) {
+    for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
       if (i == napMenuOpcion) {
         oled.print(">");
       } else {
@@ -958,7 +1089,7 @@ void mostrarNapMenu() {
     }
     
     // Si hay menos opciones que el máximo, mostrar líneas vacías
-    for (int i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
+    for (uint8_t i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
       oled.println();
     }
     
@@ -986,7 +1117,7 @@ void mostrarMenuAbout() {
   
   // Versión
   oled.print(" Version: ");
-  oled.println(version);
+  oled.println("1.29");
 
   // Website
   oled.println(" www.iTronnix.com");
@@ -1001,11 +1132,11 @@ void mostrarForceColorMenu() {
   oled.println(" FORCE COLOR");
   
   // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
-  int opcionInicial = (forceColorOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
-  int opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalForceColorOpciones);
+  uint8_t opcionInicial = (forceColorOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+  uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalForceColorOpciones);
   
   // Mostrar las opciones correspondientes
-  for (int i = opcionInicial; i < opcionFinal; i++) {
+  for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
     if (i == forceColorOpcion) {
       oled.print(">");
     } else {
@@ -1036,7 +1167,7 @@ void mostrarForceColorMenu() {
   }
   
   // Si hay menos opciones que el máximo, mostrar líneas vacías
-  for (int i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
+  for (uint8_t i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
     oled.println();
   }
   
