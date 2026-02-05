@@ -1,30 +1,55 @@
-// VERSION: 1.29 - Nap Mode completo optimizado
+// VERSION: 1.32 - Nap Mode completo con EEPROM y 12-hour sleep corregido
 
 #include <Wire.h>
 #include <RTClib.h>
 #include <SSD1306Ascii.h>
 #include <SSD1306AsciiWire.h>
+#include <EEPROM.h>  // Nueva librería para persistencia
 
 // Variables globales optimizadas
 int ultimoMinutoImpreso = -1;
 unsigned long ultimaInteraccion = 0;
-const unsigned long TIEMPO_PANTALLA_ACTIVA = 30000; // 30 segundos
+const unsigned long TIEMPO_PANTALLA_ACTIVA = 3000000; // 30 segundos
 bool pantallaApagada = false;
 unsigned long tiempoEncendidoPantalla = 0; // Para controlar el bloqueo temporal
 const unsigned long TIEMPO_BLOQUEO_BOTONES = 300; // 300ms de bloqueo después de encender
 
-// Horarios (editables) - optimizado a uint8_t
-uint8_t horaDespertar = 7;
-uint8_t minutosDespertar = 30;
-uint8_t horaDormir = 19;
-uint8_t minutosDormir = 30;
+// Direcciones EEPROM para configuración persistente
+#define EE_MAGIC_BYTE 0          // Byte mágico para verificar si EEPROM está inicializada
+#define EE_MAGIC_VALUE 0x55      // Valor mágico
+#define EE_HORA_DESPERTAR 1      // Hora de despertar
+#define EE_MINUTOS_DESPERTAR 2   // Minutos de despertar
+#define EE_HORA_DORMIR 3         // Hora de dormir
+#define EE_MINUTOS_DORMIR 4      // Minutos de dormir
+#define EE_NAP_ACTIVO 5          // Estado Nap (0=Off, 1=On)
+#define EE_NAP_HORA_INICIO 6     // Hora inicio nap
+#define EE_NAP_MINUTO_INICIO 7   // Minuto inicio nap
+#define EE_NAP_DURACION_HORAS 8  // Duración horas nap
+#define EE_NAP_DURACION_MINUTOS 9 // Duración minutos nap
+#define EE_TOTAL_CONFIG_BYTES 10 // Total de bytes usados en EEPROM
+
+// Valores por defecto
+const uint8_t DEFAULT_HORA_DESPERTAR = 7;
+const uint8_t DEFAULT_MINUTOS_DESPERTAR = 30;
+const uint8_t DEFAULT_HORA_DORMIR = 19;
+const uint8_t DEFAULT_MINUTOS_DORMIR = 30;
+const uint8_t DEFAULT_NAP_HORA_INICIO = 13;
+const uint8_t DEFAULT_NAP_MINUTO_INICIO = 0;
+const uint8_t DEFAULT_NAP_DURACION_HORAS = 1;
+const uint8_t DEFAULT_NAP_DURACION_MINUTOS = 30;
+
+// Horarios (editables) - optimizado a uint8_t - ahora se cargan desde EEPROM en setup()
+uint8_t horaDespertar;
+uint8_t minutosDespertar;
+uint8_t horaDormir;
+uint8_t minutosDormir;
 
 // Variables para Nap Mode (nuevo sistema completo) - optimizado a uint8_t
-bool napActivo = false; // Estado del nap
-uint8_t napHoraInicio = 13; // Hora de inicio del nap (1 PM)
-uint8_t napMinutoInicio = 0; // Minuto de inicio del nap
-uint8_t napDuracionHoras = 1; // Duración en horas (1 hora)
-uint8_t napDuracionMinutos = 30; // Duración en minutos (30 minutos)
+bool napActivo; // Estado del nap
+uint8_t napHoraInicio; // Hora de inicio del nap
+uint8_t napMinutoInicio; // Minuto de inicio del nap
+uint8_t napDuracionHoras; // Duración en horas (0-3)
+uint8_t napDuracionMinutos; // Duración en minutos
 bool enNapMenu = false; // Controlar si estamos en el menú de Nap
 uint8_t napMenuOpcion = 0; // 0=Nap toggle, 1=Start, 2=Duration, 3=Back
 bool napEditando = false; // Estamos editando el horario?
@@ -109,6 +134,85 @@ const uint8_t intensidadVerdeTenue = 3;
 SSD1306AsciiWire oled;
 #define OLED_ADDRESS 0x3C
 
+// ======================================================
+// FUNCIONES EEPROM
+// ======================================================
+
+void inicializarEEPROM() {
+  // Verificar si la EEPROM ya está inicializada
+  if (EEPROM.read(EE_MAGIC_BYTE) != EE_MAGIC_VALUE) {
+    Serial.println(F("EEPROM no inicializada - escribiendo valores por defecto"));
+    
+    // Escribir byte mágico
+    EEPROM.update(EE_MAGIC_BYTE, EE_MAGIC_VALUE);
+    
+    // Escribir valores por defecto
+    EEPROM.update(EE_HORA_DESPERTAR, DEFAULT_HORA_DESPERTAR);
+    EEPROM.update(EE_MINUTOS_DESPERTAR, DEFAULT_MINUTOS_DESPERTAR);
+    EEPROM.update(EE_HORA_DORMIR, DEFAULT_HORA_DORMIR);
+    EEPROM.update(EE_MINUTOS_DORMIR, DEFAULT_MINUTOS_DORMIR);
+    EEPROM.update(EE_NAP_ACTIVO, 0); // Nap desactivado por defecto
+    EEPROM.update(EE_NAP_HORA_INICIO, DEFAULT_NAP_HORA_INICIO);
+    EEPROM.update(EE_NAP_MINUTO_INICIO, DEFAULT_NAP_MINUTO_INICIO);
+    EEPROM.update(EE_NAP_DURACION_HORAS, DEFAULT_NAP_DURACION_HORAS);
+    EEPROM.update(EE_NAP_DURACION_MINUTOS, DEFAULT_NAP_DURACION_MINUTOS);
+    
+    Serial.println(F("Valores por defecto escritos en EEPROM"));
+  }
+}
+
+void cargarConfiguracionDesdeEEPROM() {
+  Serial.println(F("Cargando configuración desde EEPROM..."));
+  
+  // Cargar horarios
+  horaDespertar = EEPROM.read(EE_HORA_DESPERTAR);
+  minutosDespertar = EEPROM.read(EE_MINUTOS_DESPERTAR);
+  horaDormir = EEPROM.read(EE_HORA_DORMIR);
+  minutosDormir = EEPROM.read(EE_MINUTOS_DORMIR);
+  
+  // Cargar configuración Nap
+  napActivo = EEPROM.read(EE_NAP_ACTIVO) == 1;
+  napHoraInicio = EEPROM.read(EE_NAP_HORA_INICIO);
+  napMinutoInicio = EEPROM.read(EE_NAP_MINUTO_INICIO);
+  napDuracionHoras = EEPROM.read(EE_NAP_DURACION_HORAS);
+  napDuracionMinutos = EEPROM.read(EE_NAP_DURACION_MINUTOS);
+  
+  // Limitar napDuracionHoras a 0-3 como configuramos
+  napDuracionHoras = napDuracionHoras % 4;
+  
+  Serial.println(F("Configuración cargada desde EEPROM:"));
+  Serial.print(F("  Wake up: ")); Serial.print(horaDespertar); Serial.print(F(":")); 
+  if (minutosDespertar < 10) Serial.print(F("0")); Serial.println(minutosDespertar);
+  Serial.print(F("  Sleep at: ")); Serial.print(horaDormir); Serial.print(F(":")); 
+  if (minutosDormir < 10) Serial.print(F("0")); Serial.println(minutosDormir);
+  Serial.print(F("  Nap: ")); Serial.println(napActivo ? F("On") : F("Off"));
+  if (napActivo) {
+    Serial.print(F("    Start: ")); Serial.print(napHoraInicio); Serial.print(F(":")); 
+    if (napMinutoInicio < 10) Serial.print(F("0")); Serial.println(napMinutoInicio);
+    Serial.print(F("    Duration: ")); Serial.print(napDuracionHoras); Serial.print(F("h "));
+    if (napDuracionMinutos < 10) Serial.print(F("0")); Serial.print(napDuracionMinutos); Serial.println(F("m"));
+  }
+}
+
+void guardarHorariosEnEEPROM() {
+  Serial.println(F("Guardando horarios en EEPROM..."));
+  EEPROM.update(EE_HORA_DESPERTAR, horaDespertar);
+  EEPROM.update(EE_MINUTOS_DESPERTAR, minutosDespertar);
+  EEPROM.update(EE_HORA_DORMIR, horaDormir);
+  EEPROM.update(EE_MINUTOS_DORMIR, minutosDormir);
+  Serial.println(F("Horarios guardados en EEPROM"));
+}
+
+void guardarNapConfigEnEEPROM() {
+  Serial.println(F("Guardando configuración Nap en EEPROM..."));
+  EEPROM.update(EE_NAP_ACTIVO, napActivo ? 1 : 0);
+  EEPROM.update(EE_NAP_HORA_INICIO, napHoraInicio);
+  EEPROM.update(EE_NAP_MINUTO_INICIO, napMinutoInicio);
+  EEPROM.update(EE_NAP_DURACION_HORAS, napDuracionHoras);
+  EEPROM.update(EE_NAP_DURACION_MINUTOS, napDuracionMinutos);
+  Serial.println(F("Configuración Nap guardada en EEPROM"));
+}
+
 // Función para obtener texto de forceColor desde PROGMEM
 const char* getForceColorTexto(uint8_t index) {
   static char buffer[4];
@@ -130,6 +234,10 @@ const char* getForceColorTexto(uint8_t index) {
 
 void setup() {
   Serial.begin(9600);
+
+  // Inicializar y cargar configuración desde EEPROM
+  inicializarEEPROM();
+  cargarConfiguracionDesdeEEPROM();
 
   if (!rtc.begin()) {
     Serial.println(F("Error: No se encuentra el módulo RTC."));
@@ -154,13 +262,14 @@ void setup() {
   mostrarPantallaPrincipal();
   pantallaApagada = false;
   
-  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.29 (NAP MODE COMPLETO OPTIMIZADO) ==="));
+  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.32 (12-HOUR SLEEP CORREGIDO) ==="));
   Serial.print(F("12-hour sleep configurado a: "));
   Serial.print(DOCE_HORAS_QUINCE_MIN_MS / 1000 / 60 / 60.0, 2);
   Serial.println(F(" horas totales (12h + 15min transición)"));
   Serial.println(F("Configuración Nap Mode:"));
   Serial.print(F("  Umbral siesta/noche: ")); Serial.print(UMBRAL_HORA_SIESTA); Serial.println(F(":00 (5:00 PM)"));
   Serial.println(F("  Hora extra verde tenue: 60 minutos"));
+  Serial.println(F("Configuración persistente en EEPROM habilitada"));
 }
 
 void loop() {
@@ -411,6 +520,12 @@ void procesarBotonSelect() {
         Serial.print(F(":"));
         if (minutosTemporalReloj < 10) Serial.print(F("0"));
         Serial.println(minutosTemporalReloj);
+      } else if (editandoWakeUp) {
+        // Guardar Wake up en EEPROM
+        guardarHorariosEnEEPROM();
+      } else {
+        // Guardar Sleep at en EEPROM
+        guardarHorariosEnEEPROM();
       }
       
       editandoHora = false;
@@ -545,6 +660,10 @@ void procesarBotonSelectNapMenu() {
       // Último campo (minutos), salir del modo edición
       napEditando = false;
       napEditandoCampo = 0;
+      
+      // Guardar en EEPROM si estamos editando Start o Duration
+      guardarNapConfigEnEEPROM();
+      
       // Regresar a la opción que estábamos editando
       if (napEditandoStart) {
         napMenuOpcion = 1; // Volver a Start
@@ -557,6 +676,8 @@ void procesarBotonSelectNapMenu() {
     switch (napMenuOpcion) {
       case 0: // Nap toggle
         napActivo = !napActivo;
+        // Guardar estado en EEPROM inmediatamente
+        guardarNapConfigEnEEPROM();
         Serial.print(F("Nap "));
         Serial.println(napActivo ? F("ACTIVADO") : F("DESACTIVADO"));
         break;
@@ -650,7 +771,7 @@ void procesarBotonMoveNapMenu() {
     } else {
       // Editando DURATION
       if (napEditandoCampo == 0) {
-        // Editando horas de duración (1-23)
+        // Editando horas de duración (0-3)
         napDuracionHoras = (napDuracionHoras + 1) % 4;
       } else {
         // Editando minutos de duración (de 5 en 5 minutos)
@@ -700,7 +821,7 @@ void manejarLuces() {
     return;
   }
 
-  // 3. 12-HOUR SLEEP MEJORADO (con transiciones)
+  // 3. 12-HOUR SLEEP CORREGIDO (CON TRANSICIONES CORRECTAS)
   if (doceHorasSleep) {
     unsigned long tiempoTranscurrido = millis() - inicioDoceHoras;
     
@@ -712,25 +833,29 @@ void manejarLuces() {
       return; // Salir para que continúe con lógica normal
     }
     
-    // Últimos 15 minutos de las 12 horas: AMARILLO TENUE
-    else if (tiempoTranscurrido >= (DOCE_HORAS_MS - QUINCE_MINUTOS_MS)) {
-      // Mostrar amarillo tenue los últimos 15 minutos
-      setLuz(ledAmarillo, intensidadAmarilloTenue);
-      return;
-    }
-    
     // Después de 12 horas: VERDE TENUE por 15 minutos
     else if (tiempoTranscurrido >= DOCE_HORAS_MS) {
       // Mostrar verde tenue por 15 minutos después de las 12 horas
       setLuz(ledVerde, intensidadVerdeTenue);
-      return;
+      Serial.print(F("12-hour sleep VERDE TENUE - Transcurrido: "));
+      Serial.print(tiempoTranscurrido / 1000 / 60.0, 1);
+      Serial.println(F(" minutos"));
+    }
+    
+    // Últimos 15 minutos de las 12 horas: AMARILLO TENUE
+    else if (tiempoTranscurrido >= (DOCE_HORAS_MS - QUINCE_MINUTOS_MS)) {
+      // Mostrar amarillo tenue los últimos 15 minutos
+      setLuz(ledAmarillo, intensidadAmarilloTenue);
+      Serial.print(F("12-hour sleep AMARILLO TENUE - Transcurrido: "));
+      Serial.print(tiempoTranscurrido / 1000 / 60.0, 1);
+      Serial.println(F(" minutos"));
     }
     
     // Primeras 11 horas 45 minutos: ROJO TENUE
     else {
       setLuz(ledRojo, intensidadRojoTenue);
-      return;
     }
+    return;
   }
 
   // 4. GAME MODE (nuevo - semáforo de juego)
@@ -943,12 +1068,6 @@ void mostrarMenuSettings() {
           oled.print(":");
           if (napMinutoInicio < 10) oled.print("0");
           oled.print(napMinutoInicio);
-          oled.print(" (");
-          oled.print(napDuracionHoras);
-          oled.print("h ");
-          if (napDuracionMinutos < 10) oled.print("0");
-          oled.print(napDuracionMinutos);
-          oled.print("m)");
         } else {
           oled.print("[Off]");
         }
@@ -992,11 +1111,11 @@ void mostrarNapMenu() {
     // MODO EDICIÓN
     if (napEditandoStart) {
       // Editando START
-      oled.print("Nap [");
+      oled.print(" Nap [");
       oled.print(napActivo ? "On" : "Off");
       oled.println("]");
       
-      oled.print("Start: ");
+      oled.print(" Start: ");
       if (napEditandoCampo == 0) {
         oled.print(">");
       } else {
@@ -1018,7 +1137,7 @@ void mostrarNapMenu() {
       oled.print(" Change            Apply");
     } else {
       // Editando DURATION
-      oled.print("Duration: ");
+      oled.print(" Duration: ");
       if (napEditandoCampo == 0) {
         oled.print(">");
       } else {
@@ -1037,7 +1156,7 @@ void mostrarNapMenu() {
       oled.print("m");
       oled.println();
       
-      oled.println("Back");
+      oled.println(" Back");
       oled.println();
       oled.print(" Change            Apply");
     }
@@ -1058,13 +1177,13 @@ void mostrarNapMenu() {
       
       switch(i) {
         case 0: // Nap toggle
-          oled.print("Nap [");
+          oled.print( "Nap [");
           oled.print(napActivo ? "On" : "Off");
           oled.println("]");
           break;
           
         case 1: // Start
-          oled.print("Start: ");
+          oled.print(" Start: ");
           oled.print(napHoraInicio);
           oled.print(":");
           if (napMinutoInicio < 10) oled.print("0");
@@ -1073,7 +1192,7 @@ void mostrarNapMenu() {
           break;
           
         case 2: // Duration
-          oled.print("Duration: ");
+          oled.print(" Duration: ");
           oled.print(napDuracionHoras);
           oled.print("h ");
           if (napDuracionMinutos < 10) oled.print("0");
@@ -1083,7 +1202,7 @@ void mostrarNapMenu() {
           break;
           
         case 3: // Back
-          oled.println("Back");
+          oled.println(" Back");
           break;
       }
     }
@@ -1117,7 +1236,7 @@ void mostrarMenuAbout() {
   
   // Versión
   oled.print(" Version: ");
-  oled.println("1.29");
+  oled.println("1.32");
 
   // Website
   oled.println(" www.iTronnix.com");
