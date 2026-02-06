@@ -1,4 +1,4 @@
-// VERSION: 1.35 - Force Color expandido con opciones High/Low
+// VERSION: 1.38 - Force Color expandido + Corrección salida modo siesta
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -76,10 +76,10 @@ const unsigned long DOCE_HORAS_MS = 12UL * 60UL * 60UL * 1000UL; // 12 horas en 
 const unsigned long QUINCE_MINUTOS_MS = 15UL * 60UL * 1000UL;    // 15 minutos en milisegundos
 const unsigned long DOCE_HORAS_QUINCE_MIN_MS = DOCE_HORAS_MS + QUINCE_MINUTOS_MS; // 12h 15min
 
-// CAMBIO: forceColor ahora tiene 8 valores (0-7)
-uint8_t forceColor = 0; // 0=Off, 1=Green high, 2=Green low, 3=Yellow high, 4=Yellow low, 5=Red high, 6=Red low, 7=Back
-// CAMBIO: Texto actualizado con todas las opciones nuevas
-const char forceColorTexto[] PROGMEM = "Off\0Green high\0Green low\0Yellow high\0Yellow low\0Red high\0Red low\0Back";
+// VARIABLES FORCE COLOR EXPANDIDAS (8 opciones en lugar de 4)
+uint8_t forceColor = 0; // 0=Off, 1=Green High, 2=Green Low, 3=Yellow High, 4=Yellow Low, 5=Red High, 6=Red Low, 7=Back
+// PROGMEM actualizado con 8 opciones
+const char forceColorTexto[] PROGMEM = "Off\0GH\0GL\0YH\0YL\0RH\0RL\0Back"; // Iniciales en brackets
 
 // Variables para Game mode (nuevo)
 bool gameMode = false;
@@ -117,20 +117,20 @@ const uint8_t MAX_OPCIONES_POR_PANTALLA = 2; // Máximo de opciones visibles a l
 
 // Nueva variable para Force color menu
 bool enForceColorMenu = false;
-uint8_t forceColorOpcion = 0;        // CAMBIO: 0=Green high, 1=Green low, 2=Yellow high, 3=Yellow low, 4=Red high, 5=Red low, 6=Off, 7=Back
-const uint8_t totalForceColorOpciones = 8; // CAMBIO: Actualizado de 5 a 8
-
-// Intensidades para los diferentes niveles
-const uint8_t intensidadRojoMax = 100;      // Rojo high
-const uint8_t intensidadAmarilloMax = 255;  // Amarillo high
-const uint8_t intensidadVerdeMax = 100;     // Verde high
-const uint8_t intensidadRojoTenue = 3;      // Rojo low (tenue)
-const uint8_t intensidadAmarilloTenue = 10; // Amarillo low (tenue)
-const uint8_t intensidadVerdeTenue = 3;     // Verde low (tenue)
+uint8_t forceColorOpcion = 0;        // 0=Green High, 1=Green Low, 2=Yellow High, 3=Yellow Low, 4=Red High, 5=Red Low, 6=Off, 7=Back
+const uint8_t totalForceColorOpciones = 8; // Cambiado de 5 a 8
 
 // RTC
 RTC_DS3231 rtc;
 DateTime now;
+
+// Intensidades (ahora con ambas versiones High y Low)
+const uint8_t intensidadRojoMax = 100;
+const uint8_t intensidadAmarilloMax = 255;
+const uint8_t intensidadVerdeMax = 100;
+const uint8_t intensidadRojoTenue = 3;
+const uint8_t intensidadAmarilloTenue = 10;
+const uint8_t intensidadVerdeTenue = 3;
 
 // OLED
 SSD1306AsciiWire oled;
@@ -215,9 +215,9 @@ void guardarNapConfigEnEEPROM() {
   Serial.println(F("Configuración Nap guardada en EEPROM"));
 }
 
-// Función para obtener texto de forceColor desde PROGMEM
+// Función para obtener texto de forceColor desde PROGMEM (actualizada)
 const char* getForceColorTexto(uint8_t index) {
-  static char buffer[12]; // Aumentado para "Green high"
+  static char buffer[5]; // Para almacenar hasta "Back"
   const char *ptr = forceColorTexto;
   
   for(uint8_t i = 0; i < index; i++) {
@@ -227,11 +227,26 @@ const char* getForceColorTexto(uint8_t index) {
   
   uint8_t j = 0;
   char c;
-  while((c = pgm_read_byte(ptr++)) && j < 11) {
+  while((c = pgm_read_byte(ptr++)) && j < 4) {
     buffer[j++] = c;
   }
   buffer[j] = '\0';
   return buffer;
+}
+
+// Función para obtener el nombre completo de la opción Force Color
+const char* getForceColorNombreCompleto(uint8_t opcion) {
+  switch(opcion) {
+    case 0: return "Green high";
+    case 1: return "Green low";
+    case 2: return "Yellow high";
+    case 3: return "Yellow low";
+    case 4: return "Red high";
+    case 5: return "Red low";
+    case 6: return "Off";
+    case 7: return "Back";
+    default: return "Off";
+  }
 }
 
 void setup() {
@@ -264,7 +279,7 @@ void setup() {
   mostrarPantallaPrincipal();
   pantallaApagada = false;
   
-  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.35 (FORCE COLOR EXPANDIDO) ==="));
+  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.38 (CORRECCIÓN SALIDA MODO SIESTA) ==="));
   Serial.print(F("12-hour sleep configurado a: "));
   Serial.print(DOCE_HORAS_QUINCE_MIN_MS / 1000 / 60 / 60.0, 2);
   Serial.println(F(" horas totales (12h + 15min transición)"));
@@ -272,7 +287,8 @@ void setup() {
   Serial.print(F("  Umbral siesta/noche: ")); Serial.print(UMBRAL_HORA_SIESTA); Serial.println(F(":00 (5:00 PM)"));
   Serial.println(F("  Hora extra verde tenue: 60 minutos"));
   Serial.println(F("Configuración persistente en EEPROM habilitada"));
-  Serial.println(F("Force Color expandido: Green high, Green low, Yellow high, Yellow low, Red high, Red low"));
+  Serial.println(F("Force Color expandido a 8 opciones con High/Low"));
+  Serial.println(F("Corrección: Salida completa de modo siesta después de ciclo"));
 }
 
 void loop() {
@@ -363,16 +379,28 @@ void finalizarModoSiesta() {
   Serial.println(F("MODO SIESTA FINALIZADO - Pasando a verde tenue por 1 hora"));
 }
 
+// ======================================================
+// CORRECCIÓN: FUNCIÓN ACTUALIZADA PARA SALIR COMPLETAMENTE DE MODO SIESTA
+// ======================================================
+
 void manejarModoSiesta() {
   unsigned long tiempoActual = millis();
   
   if (enVerdeExtraSiesta) {
     // Estamos en la hora extra de verde tenue
     if (tiempoActual >= tiempoFinVerdeExtra) {
-      // Terminó completamente el modo siesta
+      // CORRECCIÓN AQUÍ: Terminó completamente el modo siesta, SALIR COMPLETAMENTE
       modoSiestaActivo = false;
       enVerdeExtraSiesta = false;
-      Serial.println(F("HORA EXTRA VERDE FINALIZADA - Comportamiento normal"));
+      
+      // AQUÍ ESTÁ LA CLAVE: Desactivar Sleep Mode para volver a horario normal
+      botonPresionado = false;
+      
+      Serial.println(F("HORA EXTRA VERDE FINALIZADA - SALIENDO COMPLETAMENTE DE MODO SIESTA"));
+      Serial.println(F("Sleep mode DESACTIVADO automáticamente - Volviendo a horario normal"));
+      
+      // Actualizar pantalla para reflejar el cambio
+      mostrarPantallaPrincipal();
     } else {
       // Mostrar verde tenue durante la hora extra
       setLuz(ledVerde, intensidadVerdeTenue);
@@ -467,6 +495,8 @@ void encenderPantalla() {
     mostrarMenuAbout();
   } else if (enNapMenu) {
     mostrarNapMenu();
+  } else if (enForceColorMenu) {
+    mostrarForceColorMenu();
   }
 }
 
@@ -481,45 +511,47 @@ void procesarBotonSelect() {
     mostrarMenuSettings();
   }
   else if (enForceColorMenu) {
-    // Menú Force color expandido
-    if (forceColorOpcion == 0) { // Green high
-      forceColor = 1;
-      enForceColorMenu = false;
-      mostrarPantallaPrincipal();
-    }
-    else if (forceColorOpcion == 1) { // Green low
-      forceColor = 2;
-      enForceColorMenu = false;
-      mostrarPantallaPrincipal();
-    }
-    else if (forceColorOpcion == 2) { // Yellow high
-      forceColor = 3;
-      enForceColorMenu = false;
-      mostrarPantallaPrincipal();
-    }
-    else if (forceColorOpcion == 3) { // Yellow low
-      forceColor = 4;
-      enForceColorMenu = false;
-      mostrarPantallaPrincipal();
-    }
-    else if (forceColorOpcion == 4) { // Red high
-      forceColor = 5;
-      enForceColorMenu = false;
-      mostrarPantallaPrincipal();
-    }
-    else if (forceColorOpcion == 5) { // Red low
-      forceColor = 6;
-      enForceColorMenu = false;
-      mostrarPantallaPrincipal();
-    }
-    else if (forceColorOpcion == 6) { // Off
-      forceColor = 0;
-      enForceColorMenu = false;
-      mostrarPantallaPrincipal();
-    }
-    else if (forceColorOpcion == 7) { // Back
-      enForceColorMenu = false;
-      mostrarPantallaPrincipal();
+    // Menú Force color EXPANDIDO (8 opciones)
+    switch(forceColorOpcion) {
+      case 0: // Green High
+        forceColor = 1;
+        enForceColorMenu = false;
+        mostrarPantallaPrincipal();
+        break;
+      case 1: // Green Low
+        forceColor = 2;
+        enForceColorMenu = false;
+        mostrarPantallaPrincipal();
+        break;
+      case 2: // Yellow High
+        forceColor = 3;
+        enForceColorMenu = false;
+        mostrarPantallaPrincipal();
+        break;
+      case 3: // Yellow Low
+        forceColor = 4;
+        enForceColorMenu = false;
+        mostrarPantallaPrincipal();
+        break;
+      case 4: // Red High
+        forceColor = 5;
+        enForceColorMenu = false;
+        mostrarPantallaPrincipal();
+        break;
+      case 5: // Red Low
+        forceColor = 6;
+        enForceColorMenu = false;
+        mostrarPantallaPrincipal();
+        break;
+      case 6: // Off
+        forceColor = 0;
+        enForceColorMenu = false;
+        mostrarPantallaPrincipal();
+        break;
+      case 7: // Back
+        enForceColorMenu = false;
+        mostrarPantallaPrincipal();
+        break;
     }
   }
   else if (editandoHora) {
@@ -728,7 +760,7 @@ void procesarBotonMove() {
     return;
   }
   else if (enForceColorMenu) {
-    // Navegación en Force color menu
+    // Navegación en Force color menu expandido
     forceColorOpcion = (forceColorOpcion + 1) % totalForceColorOpciones;
     mostrarForceColorMenu();
   }
@@ -811,26 +843,32 @@ void manejarLuces() {
     enVerdeExtraSiesta = false;
   }
 
-  // 1. FORCE COLOR tiene prioridad máxima (expandido a 8 opciones)
+  // 1. FORCE COLOR tiene prioridad máxima (AHORA CON 7 OPCIONES)
   if (forceColor > 0) {
     switch(forceColor) {
-      case 1: // Green high
+      case 1: // Green High
         setLuz(ledVerde, intensidadVerdeMax);
         break;
-      case 2: // Green low
+      case 2: // Green Low
         setLuz(ledVerde, intensidadVerdeTenue);
         break;
-      case 3: // Yellow high
+      case 3: // Yellow High
         setLuz(ledAmarillo, intensidadAmarilloMax);
         break;
-      case 4: // Yellow low
+      case 4: // Yellow Low
         setLuz(ledAmarillo, intensidadAmarilloTenue);
         break;
-      case 5: // Red high
+      case 5: // Red High
         setLuz(ledRojo, intensidadRojoMax);
         break;
-      case 6: // Red low
+      case 6: // Red Low
         setLuz(ledRojo, intensidadRojoTenue);
+        break;
+      default: // Off o cualquier otro valor
+        // Apagar todas las luces
+        digitalWrite(ledVerde, LOW);
+        digitalWrite(ledAmarillo, LOW);
+        digitalWrite(ledRojo, LOW);
         break;
     }
     return;
@@ -1263,7 +1301,7 @@ void mostrarMenuAbout() {
   
   // Versión
   oled.print(" Version: ");
-  oled.println("1.35");
+  oled.println("1.38");
 
   // Website
   oled.println(" www.iTronnix.com");
@@ -1289,6 +1327,7 @@ void mostrarForceColorMenu() {
       oled.print(" ");
     }
     
+    // Mostrar nombres completos en el menú Force Color
     switch(i) {
       case 0: // Green high
         oled.println("Green high");
@@ -1334,7 +1373,7 @@ void mostrarForceColorMenu() {
   oled.print(forceColorOpcion + 1);
   oled.print("/");
   oled.print(totalForceColorOpciones);
-  oled.println("          Apply");
+  oled.println("          Select");
 }
 
 void mostrarEdicionHora() {
