@@ -1,4 +1,4 @@
-// VERSION: 1.38 - Force Color expandido + Corrección salida modo siesta
+// VERSION: 1.39 - Force Color expandido + Corrección salida modo siesta
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -9,7 +9,7 @@
 // Variables globales optimizadas
 int ultimoMinutoImpreso = -1;
 unsigned long ultimaInteraccion = 0;
-const unsigned long TIEMPO_PANTALLA_ACTIVA = 3000000; // 30 segundos
+const unsigned long TIEMPO_PANTALLA_ACTIVA = 30000; // 30 segundos
 bool pantallaApagada = false;
 unsigned long tiempoEncendidoPantalla = 0; // Para controlar el bloqueo temporal
 const unsigned long TIEMPO_BLOQUEO_BOTONES = 300; // 300ms de bloqueo después de encender
@@ -279,7 +279,7 @@ void setup() {
   mostrarPantallaPrincipal();
   pantallaApagada = false;
   
-  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.38 (CORRECCIÓN SALIDA MODO SIESTA) ==="));
+  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.39 (CORRECCIÓN SALIDA MODO SIESTA) ==="));
   Serial.print(F("12-hour sleep configurado a: "));
   Serial.print(DOCE_HORAS_QUINCE_MIN_MS / 1000 / 60 / 60.0, 2);
   Serial.println(F(" horas totales (12h + 15min transición)"));
@@ -1301,7 +1301,7 @@ void mostrarMenuAbout() {
   
   // Versión
   oled.print(" Version: ");
-  oled.println("1.38");
+  oled.println("1.39");
 
   // Website
   oled.println(" www.iTronnix.com");
