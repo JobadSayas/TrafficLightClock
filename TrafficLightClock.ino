@@ -1,4 +1,4 @@
-// VERSION: 1.39 - Force Color expandido + Corrección salida modo siesta
+// VERSION: 1.43 - Pantalla especial para 12-hour sleep + exclusión mutua
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -81,6 +81,11 @@ uint8_t forceColor = 0; // 0=Off, 1=Green High, 2=Green Low, 3=Yellow High, 4=Ye
 // PROGMEM actualizado con 8 opciones
 const char forceColorTexto[] PROGMEM = "Off\0GH\0GL\0YH\0YL\0RH\0RL\0Back"; // Iniciales en brackets
 
+// ==================== Timeout para Force Color ====================
+unsigned long tiempoInicioForceColor = 0; // Cuándo se activó el force color
+const unsigned long TIEMPO_FORCE_COLOR_MS = 60UL * 60UL * 1000UL; // 1 hora en milisegundos
+// ===================================================================
+
 // Variables para Game mode (nuevo)
 bool gameMode = false;
 unsigned long inicioGameMode = 0;
@@ -92,6 +97,16 @@ const unsigned long TIEMPO_VERDE_JUEGO = 20000;   // 20 segundos en verde
 const unsigned long TIEMPO_AMARILLO_JUEGO = 3000; // 3 segundos en amarillo
 const unsigned long TIEMPO_ROJO_JUEGO = 10000;    // 10 segundos en rojo
 // =====================================================================
+
+// ==================== VARIABLES PARA MODOS ESPECIALES ====================
+bool modoDormirMenuActivo = false; // Indica si estamos en el menú especial de sleep mode
+bool modoDoceHorasMenuActivo = false; // Indica si estamos en el menú especial de 12-hour sleep
+uint8_t opcionEspecialSeleccionada = 0; // 0=Modo actual, 1=Force wakeup
+const uint8_t totalOpcionesEspecial = 2; // Modo actual y Force wakeup
+bool forceWakeupActivo = false; // Indica si el force wakeup está activo
+unsigned long tiempoFinForceWakeup = 0; // Cuándo termina el force wakeup (1 hora)
+const unsigned long TIEMPO_FORCE_WAKEUP_MS = 60UL * 60UL * 1000UL; // 1 hora en milisegundos
+// ==========================================================================
 
 // Pines
 const int ledVerde = 9;
@@ -279,7 +294,7 @@ void setup() {
   mostrarPantallaPrincipal();
   pantallaApagada = false;
   
-  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.39 (CORRECCIÓN SALIDA MODO SIESTA) ==="));
+  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.43 (PANTALLA ESPECIAL 12-HOUR SLEEP) ==="));
   Serial.print(F("12-hour sleep configurado a: "));
   Serial.print(DOCE_HORAS_QUINCE_MIN_MS / 1000 / 60 / 60.0, 2);
   Serial.println(F(" horas totales (12h + 15min transición)"));
@@ -288,13 +303,41 @@ void setup() {
   Serial.println(F("  Hora extra verde tenue: 60 minutos"));
   Serial.println(F("Configuración persistente en EEPROM habilitada"));
   Serial.println(F("Force Color expandido a 8 opciones con High/Low"));
-  Serial.println(F("Corrección: Salida completa de modo siesta después de ciclo"));
+  Serial.println(F("Force Color con timeout de 1 hora"));
+  Serial.println(F("NUEVO: Pantalla especial para 12-hour sleep + exclusión mutua"));
 }
 
 void loop() {
   now = rtc.now();
   int hora = now.hour();
   int minuto = now.minute();
+
+  // Verificar si el force wakeup ha terminado
+  if (forceWakeupActivo && millis() >= tiempoFinForceWakeup) {
+    forceWakeupActivo = false;
+    Serial.println(F("Force wakeup FINALIZADO - Volviendo a horario normal"));
+  }
+
+  // Verificar timeout de Force Color
+  if (forceColor > 0 && millis() >= tiempoInicioForceColor + TIEMPO_FORCE_COLOR_MS) {
+    uint8_t oldForceColor = forceColor;
+    forceColor = 0; // Desactivar
+    Serial.print(F("Force color "));
+    switch(oldForceColor) {
+      case 1: Serial.print(F("Green High")); break;
+      case 2: Serial.print(F("Green Low")); break;
+      case 3: Serial.print(F("Yellow High")); break;
+      case 4: Serial.print(F("Yellow Low")); break;
+      case 5: Serial.print(F("Red High")); break;
+      case 6: Serial.print(F("Red Low")); break;
+    }
+    Serial.println(F(" FINALIZADO - Timeout 1 hora"));
+    
+    // Actualizar pantalla si está en menú principal
+    if (!pantallaApagada && !enMenuSettings && !editandoHora && !enForceColorMenu && !enMenuAbout && !enNapMenu && !modoDormirMenuActivo && !modoDoceHorasMenuActivo) {
+      mostrarPantallaPrincipal();
+    }
+  }
 
   if (minuto != ultimoMinutoImpreso) {
     Serial.print(F("Hora actual: "));
@@ -305,8 +348,13 @@ void loop() {
 
     ultimoMinutoImpreso = minuto;
 
-    if (!botonPresionado && !enMenuSettings && !editandoHora && !enForceColorMenu && !pantallaApagada && !enMenuAbout && !enNapMenu) {
+    // Actualizar pantalla solo si no estamos en ningún menú y la pantalla está encendida
+    if (!botonPresionado && !enMenuSettings && !editandoHora && !enForceColorMenu && !pantallaApagada && !enMenuAbout && !enNapMenu && !modoDormirMenuActivo && !modoDoceHorasMenuActivo) {
       mostrarPantallaPrincipal();
+    } else if (modoDormirMenuActivo && !pantallaApagada) {
+      mostrarPantallaDormir();
+    } else if (modoDoceHorasMenuActivo && !pantallaApagada) {
+      mostrarPantallaDoceHoras();
     }
   }
 
@@ -457,6 +505,7 @@ void manejarBotones() {
       // Activar bloqueo temporal
       bloqueoActivo = true;
       tiempoEncendidoPantalla = millis();
+      ultimaInteraccion = millis();
       // Actualizar estados para evitar procesamiento en siguiente ciclo
       lastSelect = currentSelect;
       lastMove = currentMove;
@@ -490,7 +539,13 @@ void encenderPantalla() {
   ultimaInteraccion = millis();
   
   if (!editandoHora && !enMenuSettings && !enForceColorMenu && !enMenuAbout && !enNapMenu) {
-    mostrarPantallaPrincipal();
+    if (modoDormirMenuActivo) {
+      mostrarPantallaDormir();
+    } else if (modoDoceHorasMenuActivo) {
+      mostrarPantallaDoceHoras();
+    } else {
+      mostrarPantallaPrincipal();
+    }
   } else if (enMenuAbout) {
     mostrarMenuAbout();
   } else if (enNapMenu) {
@@ -515,31 +570,37 @@ void procesarBotonSelect() {
     switch(forceColorOpcion) {
       case 0: // Green High
         forceColor = 1;
+        tiempoInicioForceColor = millis(); // Registrar tiempo de inicio
         enForceColorMenu = false;
         mostrarPantallaPrincipal();
         break;
       case 1: // Green Low
         forceColor = 2;
+        tiempoInicioForceColor = millis(); // Registrar tiempo de inicio
         enForceColorMenu = false;
         mostrarPantallaPrincipal();
         break;
       case 2: // Yellow High
         forceColor = 3;
+        tiempoInicioForceColor = millis(); // Registrar tiempo de inicio
         enForceColorMenu = false;
         mostrarPantallaPrincipal();
         break;
       case 3: // Yellow Low
         forceColor = 4;
+        tiempoInicioForceColor = millis(); // Registrar tiempo de inicio
         enForceColorMenu = false;
         mostrarPantallaPrincipal();
         break;
       case 4: // Red High
         forceColor = 5;
+        tiempoInicioForceColor = millis(); // Registrar tiempo de inicio
         enForceColorMenu = false;
         mostrarPantallaPrincipal();
         break;
       case 5: // Red Low
         forceColor = 6;
+        tiempoInicioForceColor = millis(); // Registrar tiempo de inicio
         enForceColorMenu = false;
         mostrarPantallaPrincipal();
         break;
@@ -627,10 +688,58 @@ void procesarBotonSelect() {
       opcionSeleccionada = 0;
       mostrarPantallaPrincipal();
     }
+  } else if (modoDormirMenuActivo) {
+    // Menú especial cuando Sleep mode está activo
+    if (opcionEspecialSeleccionada == 0) {
+      // Sleep mode [On] -> Desactivar sleep mode
+      botonPresionado = false;
+      modoSiestaActivo = false;
+      enVerdeExtraSiesta = false;
+      modoDormirMenuActivo = false;
+      Serial.println(F("Sleep mode DESACTIVADO desde menú especial"));
+      mostrarPantallaPrincipal();
+    } else if (opcionEspecialSeleccionada == 1) {
+      // Force wakeup
+      botonPresionado = false; // Desactivar sleep mode
+      modoSiestaActivo = false;
+      enVerdeExtraSiesta = false;
+      forceWakeupActivo = true; // Activar force wakeup
+      tiempoFinForceWakeup = millis() + TIEMPO_FORCE_WAKEUP_MS; // 1 hora
+      modoDormirMenuActivo = false; // Salir del menú especial
+      Serial.println(F("Force wakeup ACTIVADO - Verde por 1 hora"));
+      mostrarPantallaPrincipal();
+    }
+  } else if (modoDoceHorasMenuActivo) {
+    // Menú especial cuando 12-hour sleep está activo
+    if (opcionEspecialSeleccionada == 0) {
+      // 12-hour sleep [On] -> Desactivar 12-hour sleep
+      doceHorasSleep = false;
+      modoDoceHorasMenuActivo = false;
+      Serial.println(F("12-hour sleep DESACTIVADO desde menú especial"));
+      mostrarPantallaPrincipal();
+    } else if (opcionEspecialSeleccionada == 1) {
+      // Force wakeup
+      doceHorasSleep = false; // Desactivar 12-hour sleep
+      forceWakeupActivo = true; // Activar force wakeup
+      tiempoFinForceWakeup = millis() + TIEMPO_FORCE_WAKEUP_MS; // 1 hora
+      modoDoceHorasMenuActivo = false; // Salir del menú especial
+      Serial.println(F("Force wakeup ACTIVADO desde 12-hour sleep - Verde por 1 hora"));
+      mostrarPantallaPrincipal();
+    }
   } else {
     // Menú principal
     if (opcionSeleccionada == 0) { // Sleep mode
       bool estadoAnterior = botonPresionado;
+      
+      // Si vamos a activar Sleep mode, desactivar 12-hour sleep
+      if (!botonPresionado) {
+        if (doceHorasSleep) {
+          doceHorasSleep = false;
+          modoDoceHorasMenuActivo = false;
+          Serial.println(F("12-hour sleep DESACTIVADO automáticamente (Sleep mode activado)"));
+        }
+      }
+      
       botonPresionado = !botonPresionado;
       
       if (botonPresionado) {
@@ -648,7 +757,11 @@ void procesarBotonSelect() {
           enVerdeExtraSiesta = false;
           Serial.println(F("Sleep mode ACTIVADO - MODO NOCHE"));
         }
-        mostrarPantallaPrincipal();
+        
+        // Activar el menú especial de dormir
+        modoDormirMenuActivo = true;
+        opcionEspecialSeleccionada = 0;
+        mostrarPantallaDormir();
       } else {
         // Sleep Mode DESACTIVADO
         if (modoSiestaActivo || enVerdeExtraSiesta) {
@@ -658,28 +771,47 @@ void procesarBotonSelect() {
         } else {
           Serial.println(F("Sleep mode DESACTIVADO"));
         }
+        modoDormirMenuActivo = false;
         ultimoMinutoImpreso = -1;
         mostrarPantallaPrincipal();
       }
     }
     else if (opcionSeleccionada == 1) { // 12-hour sleep
-      doceHorasSleep = !doceHorasSleep;
+      bool nuevoEstado = !doceHorasSleep;
+      
+      // Si vamos a activar 12-hour sleep, desactivar Sleep mode
+      if (nuevoEstado && botonPresionado) {
+        botonPresionado = false;
+        modoSiestaActivo = false;
+        enVerdeExtraSiesta = false;
+        modoDormirMenuActivo = false;
+        Serial.println(F("Sleep mode DESACTIVADO automáticamente (12-hour sleep activado)"));
+      }
+      
+      doceHorasSleep = nuevoEstado;
+      
       if (doceHorasSleep) {
         inicioDoceHoras = millis();
         Serial.print(F("12-hour sleep ACTIVADO - Inicio registrado a las "));
         Serial.print(millis());
         Serial.println(F(" ms"));
+        
+        // Activar el menú especial de 12-hour sleep
+        modoDoceHorasMenuActivo = true;
+        opcionEspecialSeleccionada = 0;
+        mostrarPantallaDoceHoras();
       } else {
         Serial.println(F("12-hour sleep DESACTIVADO manualmente"));
+        modoDoceHorasMenuActivo = false;
+        mostrarPantallaPrincipal();
       }
-      mostrarPantallaPrincipal();
     }
     else if (opcionSeleccionada == 2) { // Force color
       enForceColorMenu = true;
       forceColorOpcion = 0;
       mostrarForceColorMenu();
     }
-    else if (opcionSeleccionada == 3) { // Game mode (NUEVO)
+    else if (opcionSeleccionada == 3) { // Game mode
       gameMode = !gameMode;
       if (gameMode) {
         inicioGameMode = millis();
@@ -796,6 +928,14 @@ void procesarBotonMove() {
     settingScrollOffset = (settingOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
     
     mostrarMenuSettings();
+  } else if (modoDormirMenuActivo || modoDoceHorasMenuActivo) {
+    // Navegación en menús especiales
+    opcionEspecialSeleccionada = (opcionEspecialSeleccionada + 1) % totalOpcionesEspecial;
+    if (modoDormirMenuActivo) {
+      mostrarPantallaDormir();
+    } else {
+      mostrarPantallaDoceHoras();
+    }
   } else {
     // Menú principal con scroll por pares
     uint8_t nuevaOpcion = (opcionSeleccionada + 1) % totalOpciones;
@@ -841,6 +981,14 @@ void manejarLuces() {
     botonPresionado = false;
     modoSiestaActivo = false;
     enVerdeExtraSiesta = false;
+    modoDormirMenuActivo = false;
+    modoDoceHorasMenuActivo = false;
+  }
+
+  // 0. FORCE WAKEUP tiene prioridad máxima
+  if (forceWakeupActivo) {
+    setLuz(ledVerde, intensidadVerdeTenue);
+    return;
   }
 
   // 1. FORCE COLOR tiene prioridad máxima (AHORA CON 7 OPCIONES)
@@ -893,6 +1041,7 @@ void manejarLuces() {
     // Verificar si ya terminó completamente (12h 15min)
     if (tiempoTranscurrido >= DOCE_HORAS_QUINCE_MIN_MS) {
       doceHorasSleep = false;
+      modoDoceHorasMenuActivo = false;
       Serial.print(F("12-hour sleep COMPLETADO - Desactivado automáticamente a las "));
       Serial.println(millis());
       return; // Salir para que continúe con lógica normal
@@ -1066,7 +1215,7 @@ void mostrarPantallaPrincipal() {
         oled.println("]");
         break;
         
-      case 3: // Game mode (NUEVO)
+      case 3: // Game mode
         oled.print("Game mode [");
         oled.print(gameMode ? "On" : "Off");
         oled.println("]");
@@ -1088,6 +1237,106 @@ void mostrarPantallaPrincipal() {
   oled.print(opcionSeleccionada + 1);
   oled.print("/");
   oled.print(totalOpciones);
+  oled.println("          Select");
+}
+
+// Pantalla especial cuando Sleep mode está activo
+void mostrarPantallaDormir() {
+  oled.clear();
+  
+  // Primera línea: Hora y versión
+  oled.print(" ");
+  oled.print(now.hour());
+  oled.print(":");
+  if (now.minute() < 10) oled.print("0");
+  oled.print(now.minute());
+  oled.println("              iTronnix");
+  
+  // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
+  uint8_t opcionInicial = (opcionEspecialSeleccionada / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+  uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalOpcionesEspecial);
+  
+  // Mostrar las opciones correspondientes
+  for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
+    if (i == opcionEspecialSeleccionada) {
+      oled.print(">");
+    } else {
+      oled.print(" ");
+    }
+    
+    switch(i) {
+      case 0: // Sleep mode [On]
+        oled.print("Sleep mode [On]");
+        oled.println();
+        break;
+        
+      case 1: // Force wakeup [Off]
+        oled.print("Force wakeup [Off]");
+        oled.println();
+        break;
+    }
+  }
+  
+  // Si hay menos opciones que el máximo, mostrar líneas vacías
+  for (uint8_t i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
+    oled.println();
+  }
+  
+  // Navegación con indicador de posición
+  oled.print(" Move ");
+  oled.print(opcionEspecialSeleccionada + 1);
+  oled.print("/");
+  oled.print(totalOpcionesEspecial);
+  oled.println("          Select");
+}
+
+// NUEVA: Pantalla especial cuando 12-hour sleep está activo
+void mostrarPantallaDoceHoras() {
+  oled.clear();
+  
+  // Primera línea: Hora y versión
+  oled.print(" ");
+  oled.print(now.hour());
+  oled.print(":");
+  if (now.minute() < 10) oled.print("0");
+  oled.print(now.minute());
+  oled.println("              iTronnix");
+  
+  // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
+  uint8_t opcionInicial = (opcionEspecialSeleccionada / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+  uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalOpcionesEspecial);
+  
+  // Mostrar las opciones correspondientes
+  for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
+    if (i == opcionEspecialSeleccionada) {
+      oled.print(">");
+    } else {
+      oled.print(" ");
+    }
+    
+    switch(i) {
+      case 0: // 12-hour sleep [On]
+        oled.print("12-hour sleep [On]");
+        oled.println();
+        break;
+        
+      case 1: // Force wakeup [Off]
+        oled.print("Force wakeup [Off]");
+        oled.println();
+        break;
+    }
+  }
+  
+  // Si hay menos opciones que el máximo, mostrar líneas vacías
+  for (uint8_t i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
+    oled.println();
+  }
+  
+  // Navegación con indicador de posición
+  oled.print(" Move ");
+  oled.print(opcionEspecialSeleccionada + 1);
+  oled.print("/");
+  oled.print(totalOpcionesEspecial);
   oled.println("          Select");
 }
 
@@ -1301,7 +1550,7 @@ void mostrarMenuAbout() {
   
   // Versión
   oled.print(" Version: ");
-  oled.println("1.39");
+  oled.println("1.43");
 
   // Website
   oled.println(" www.iTronnix.com");
