@@ -1,4 +1,4 @@
-// VERSION: 1.43 - Pantalla especial para 12-hour sleep + exclusión mutua
+// VERSION: 1.47 - Horarios de despertar por día (máximo 3)
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -16,9 +16,10 @@ const unsigned long TIEMPO_BLOQUEO_BOTONES = 300; // 300ms de bloqueo después d
 
 // Direcciones EEPROM para configuración persistente
 #define EE_MAGIC_BYTE 0          // Byte mágico para verificar si EEPROM está inicializada
-#define EE_MAGIC_VALUE 0x55      // Valor mágico
-#define EE_HORA_DESPERTAR 1      // Hora de despertar
-#define EE_MINUTOS_DESPERTAR 2   // Minutos de despertar
+#define EE_MAGIC_VALUE_V143 0x55 // Layout de la v1.43 (un solo horario de despertar)
+#define EE_MAGIC_VALUE 0x56      // Layout v1.44 (hasta 3 horarios con rango de días)
+#define EE_HORA_DESPERTAR 1      // Hora del horario 1 (se conserva la dirección de v1.43)
+#define EE_MINUTOS_DESPERTAR 2   // Minutos del horario 1
 #define EE_HORA_DORMIR 3         // Hora de dormir
 #define EE_MINUTOS_DORMIR 4      // Minutos de dormir
 #define EE_NAP_ACTIVO 5          // Estado Nap (0=Off, 1=On)
@@ -26,11 +27,33 @@ const unsigned long TIEMPO_BLOQUEO_BOTONES = 300; // 300ms de bloqueo después d
 #define EE_NAP_MINUTO_INICIO 7   // Minuto inicio nap
 #define EE_NAP_DURACION_HORAS 8  // Duración horas nap
 #define EE_NAP_DURACION_MINUTOS 9 // Duración minutos nap
-#define EE_TOTAL_CONFIG_BYTES 10 // Total de bytes usados en EEPROM
+#define EE_WAKE0_RANGO 10        // Rango de días del horario 1
+#define EE_WAKE_COUNT 11         // Cantidad de horarios (1-3)
+#define EE_WAKE1_HORA 12         // Horario 2
+#define EE_WAKE1_MINUTOS 13
+#define EE_WAKE1_RANGO 14
+#define EE_WAKE2_HORA 15         // Horario 3
+#define EE_WAKE2_MINUTOS 16
+#define EE_WAKE2_RANGO 17
+#define EE_TOTAL_CONFIG_BYTES 18 // Total de bytes usados en EEPROM
+
+// Rangos de días. El orden es el que recorre el botón Change.
+#define DAY_ALL 0
+#define DAY_WEEK 1
+#define DAY_WEEKEND 2
+#define DAY_SUN 3
+#define DAY_MON 4
+#define DAY_TUE 5
+#define DAY_WED 6
+#define DAY_THU 7
+#define DAY_FRI 8
+#define DAY_SAT 9
+#define DAY_RANGE_COUNT 10
+#define MAX_WAKE_SLOTS 3
 
 // Valores por defecto
-const uint8_t DEFAULT_HORA_DESPERTAR = 7;
-const uint8_t DEFAULT_MINUTOS_DESPERTAR = 30;
+const uint8_t DEFAULT_HORA_DESPERTAR = 8;
+const uint8_t DEFAULT_MINUTOS_DESPERTAR = 0;
 const uint8_t DEFAULT_HORA_DORMIR = 19;
 const uint8_t DEFAULT_MINUTOS_DORMIR = 30;
 const uint8_t DEFAULT_NAP_HORA_INICIO = 13;
@@ -38,11 +61,30 @@ const uint8_t DEFAULT_NAP_MINUTO_INICIO = 0;
 const uint8_t DEFAULT_NAP_DURACION_HORAS = 1;
 const uint8_t DEFAULT_NAP_DURACION_MINUTOS = 30;
 
-// Horarios (editables) - optimizado a uint8_t - ahora se cargan desde EEPROM en setup()
-uint8_t horaDespertar;
-uint8_t minutosDespertar;
+// Horarios de despertar (hasta 3). Se cargan desde EEPROM en setup().
+uint8_t wakeHora[MAX_WAKE_SLOTS];
+uint8_t wakeMinutos[MAX_WAKE_SLOTS];
+uint8_t wakeRango[MAX_WAKE_SLOTS];
+uint8_t wakeCount = 1;
 uint8_t horaDormir;
 uint8_t minutosDormir;
+
+// Textos en flash para no gastar RAM
+const char dayRangeLabels[] PROGMEM =
+  "All days [Ad]\0"
+  "Week days [Wd]\0"
+  "Week end [We]\0"
+  "Sundays [Su]\0"
+  "Mondays [M]\0"
+  "Tuesdays [Tu]\0"
+  "Wednesdays [W]\0"
+  "Thursdays [Th]\0"
+  "Fridays [Fr]\0"
+  "Saturdays [Sa]\0";
+const char dayRangeShort[] PROGMEM = "Ad\0Wd\0We\0Su\0M\0Tu\0W\0Th\0Fr\0Sa\0";
+const char weekdayNames[] PROGMEM = "Sun\0Mon\0Tue\0Wed\0Thu\0Fri\0Sat\0";
+const char weekdayFullNames[] PROGMEM =
+  "Sunday\0Monday\0Tuesday\0Wednesday\0Thursday\0Friday\0Saturday\0";
 
 // Variables para Nap Mode (nuevo sistema completo) - optimizado a uint8_t
 bool napActivo; // Estado del nap
@@ -68,6 +110,7 @@ unsigned long tiempoFinVerdeExtra = 0; // Cuando termina la hora extra verde
 // Variables temporales para edición de reloj - optimizado a uint8_t
 uint8_t horaTemporalReloj = 0;
 uint8_t minutosTemporalReloj = 0;
+uint8_t diaTemporalReloj = 0;
 
 // Variables para 12-hour sleep y Force color
 bool doceHorasSleep = false;
@@ -124,7 +167,18 @@ bool editandoReloj = false;          // Para diferenciar si estamos editando el 
 uint8_t opcionSeleccionada = 0;      // 0=Sleep mode, 1=12-hour sleep, 2=Force color, 3=Game mode, 4=Settings
 uint8_t settingOpcion = 0;           // 0=Wake up, 1=Sleep at, 2=Nap, 3=Clock setup, 4=About, 5=Back
 uint8_t editandoCampo = 0;           // 0=hora, 1=minutos
-bool editandoWakeUp = true;          // true=Wake up, false=Sleep at
+
+// Menú Wake up setup (lista + editor de hora, minutos y rango)
+bool enWakeUpMenu = false;
+bool editandoWakeSlot = false;
+bool agregandoWake = false;
+uint8_t wakeMenuOpcion = 0;
+uint8_t wakeScrollOffset = 0;
+uint8_t wakeEditCampo = 0;           // 0=hora, 1=minutos, 2=rango de días
+uint8_t wakeEditIndex = 0;
+uint8_t wakeEditHora = DEFAULT_HORA_DESPERTAR;
+uint8_t wakeEditMinutos = DEFAULT_MINUTOS_DESPERTAR;
+uint8_t wakeEditRango = DAY_ALL;
 const uint8_t totalOpciones = 5;     // Cambiado de 4 a 5 (agregamos Game mode)
 const uint8_t totalSettingOpciones = 6;  // Cambiado de 4 a 6 (agregamos Nap y About)
 uint8_t settingScrollOffset = 0;     // Para controlar qué opciones mostrar en pantalla
@@ -155,35 +209,89 @@ SSD1306AsciiWire oled;
 // FUNCIONES EEPROM
 // ======================================================
 
+void escribirSlotsWakeEnEEPROM() {
+  EEPROM.update(EE_HORA_DESPERTAR, wakeHora[0]);
+  EEPROM.update(EE_MINUTOS_DESPERTAR, wakeMinutos[0]);
+  EEPROM.update(EE_WAKE0_RANGO, wakeRango[0]);
+  EEPROM.update(EE_WAKE_COUNT, wakeCount);
+  EEPROM.update(EE_WAKE1_HORA, wakeHora[1]);
+  EEPROM.update(EE_WAKE1_MINUTOS, wakeMinutos[1]);
+  EEPROM.update(EE_WAKE1_RANGO, wakeRango[1]);
+  EEPROM.update(EE_WAKE2_HORA, wakeHora[2]);
+  EEPROM.update(EE_WAKE2_MINUTOS, wakeMinutos[2]);
+  EEPROM.update(EE_WAKE2_RANGO, wakeRango[2]);
+}
+
+void escribirDefaultsFabricaEnEEPROM() {
+  EEPROM.update(EE_MAGIC_BYTE, EE_MAGIC_VALUE);
+  EEPROM.update(EE_HORA_DESPERTAR, DEFAULT_HORA_DESPERTAR);
+  EEPROM.update(EE_MINUTOS_DESPERTAR, DEFAULT_MINUTOS_DESPERTAR);
+  EEPROM.update(EE_HORA_DORMIR, DEFAULT_HORA_DORMIR);
+  EEPROM.update(EE_MINUTOS_DORMIR, DEFAULT_MINUTOS_DORMIR);
+  EEPROM.update(EE_NAP_ACTIVO, 0);
+  EEPROM.update(EE_NAP_HORA_INICIO, DEFAULT_NAP_HORA_INICIO);
+  EEPROM.update(EE_NAP_MINUTO_INICIO, DEFAULT_NAP_MINUTO_INICIO);
+  EEPROM.update(EE_NAP_DURACION_HORAS, DEFAULT_NAP_DURACION_HORAS);
+  EEPROM.update(EE_NAP_DURACION_MINUTOS, DEFAULT_NAP_DURACION_MINUTOS);
+  EEPROM.update(EE_WAKE0_RANGO, DAY_ALL);
+  EEPROM.update(EE_WAKE_COUNT, 1);
+  EEPROM.update(EE_WAKE1_HORA, DEFAULT_HORA_DESPERTAR);
+  EEPROM.update(EE_WAKE1_MINUTOS, DEFAULT_MINUTOS_DESPERTAR);
+  EEPROM.update(EE_WAKE1_RANGO, DAY_ALL);
+  EEPROM.update(EE_WAKE2_HORA, DEFAULT_HORA_DESPERTAR);
+  EEPROM.update(EE_WAKE2_MINUTOS, DEFAULT_MINUTOS_DESPERTAR);
+  EEPROM.update(EE_WAKE2_RANGO, DAY_ALL);
+}
+
 void inicializarEEPROM() {
-  // Verificar si la EEPROM ya está inicializada
-  if (EEPROM.read(EE_MAGIC_BYTE) != EE_MAGIC_VALUE) {
-    Serial.println(F("EEPROM no inicializada - escribiendo valores por defecto"));
-    
-    // Escribir byte mágico
-    EEPROM.update(EE_MAGIC_BYTE, EE_MAGIC_VALUE);
-    
-    // Escribir valores por defecto
-    EEPROM.update(EE_HORA_DESPERTAR, DEFAULT_HORA_DESPERTAR);
-    EEPROM.update(EE_MINUTOS_DESPERTAR, DEFAULT_MINUTOS_DESPERTAR);
-    EEPROM.update(EE_HORA_DORMIR, DEFAULT_HORA_DORMIR);
-    EEPROM.update(EE_MINUTOS_DORMIR, DEFAULT_MINUTOS_DORMIR);
-    EEPROM.update(EE_NAP_ACTIVO, 0); // Nap desactivado por defecto
-    EEPROM.update(EE_NAP_HORA_INICIO, DEFAULT_NAP_HORA_INICIO);
-    EEPROM.update(EE_NAP_MINUTO_INICIO, DEFAULT_NAP_MINUTO_INICIO);
-    EEPROM.update(EE_NAP_DURACION_HORAS, DEFAULT_NAP_DURACION_HORAS);
-    EEPROM.update(EE_NAP_DURACION_MINUTOS, DEFAULT_NAP_DURACION_MINUTOS);
-    
-    Serial.println(F("Valores por defecto escritos en EEPROM"));
+  uint8_t magic = EEPROM.read(EE_MAGIC_BYTE);
+
+  if (magic == EE_MAGIC_VALUE) {
+    return;
   }
+
+  if (magic == EE_MAGIC_VALUE_V143) {
+    // Conserva la hora ya guardada en los bytes 1 y 2 y la marca como All days.
+    Serial.println(F("Migrando EEPROM 1.43 -> 1.44"));
+    EEPROM.update(EE_WAKE0_RANGO, DAY_ALL);
+    EEPROM.update(EE_WAKE_COUNT, 1);
+    EEPROM.update(EE_WAKE1_HORA, DEFAULT_HORA_DESPERTAR);
+    EEPROM.update(EE_WAKE1_MINUTOS, DEFAULT_MINUTOS_DESPERTAR);
+    EEPROM.update(EE_WAKE1_RANGO, DAY_ALL);
+    EEPROM.update(EE_WAKE2_HORA, DEFAULT_HORA_DESPERTAR);
+    EEPROM.update(EE_WAKE2_MINUTOS, DEFAULT_MINUTOS_DESPERTAR);
+    EEPROM.update(EE_WAKE2_RANGO, DAY_ALL);
+    EEPROM.update(EE_MAGIC_BYTE, EE_MAGIC_VALUE);
+    Serial.println(F("EEPROM migrada; el horario anterior queda como All days"));
+    return;
+  }
+
+  Serial.println(F("EEPROM no inicializada - escribiendo valores por defecto"));
+  escribirDefaultsFabricaEnEEPROM();
+  Serial.println(F("Valores por defecto escritos en EEPROM"));
 }
 
 void cargarConfiguracionDesdeEEPROM() {
   Serial.println(F("Cargando configuración desde EEPROM..."));
   
-  // Cargar horarios
-  horaDespertar = EEPROM.read(EE_HORA_DESPERTAR);
-  minutosDespertar = EEPROM.read(EE_MINUTOS_DESPERTAR);
+  // Cargar horarios de despertar
+  wakeHora[0] = EEPROM.read(EE_HORA_DESPERTAR);
+  wakeMinutos[0] = EEPROM.read(EE_MINUTOS_DESPERTAR);
+  wakeRango[0] = EEPROM.read(EE_WAKE0_RANGO);
+  wakeCount = EEPROM.read(EE_WAKE_COUNT);
+  wakeHora[1] = EEPROM.read(EE_WAKE1_HORA);
+  wakeMinutos[1] = EEPROM.read(EE_WAKE1_MINUTOS);
+  wakeRango[1] = EEPROM.read(EE_WAKE1_RANGO);
+  wakeHora[2] = EEPROM.read(EE_WAKE2_HORA);
+  wakeMinutos[2] = EEPROM.read(EE_WAKE2_MINUTOS);
+  wakeRango[2] = EEPROM.read(EE_WAKE2_RANGO);
+  if (wakeCount < 1 || wakeCount > MAX_WAKE_SLOTS) wakeCount = 1;
+  for (uint8_t i = 0; i < MAX_WAKE_SLOTS; i++) {
+    if (wakeHora[i] > 23) wakeHora[i] = DEFAULT_HORA_DESPERTAR;
+    if (wakeMinutos[i] > 59) wakeMinutos[i] = DEFAULT_MINUTOS_DESPERTAR;
+    if (wakeRango[i] >= DAY_RANGE_COUNT) wakeRango[i] = DAY_ALL;
+  }
+
   horaDormir = EEPROM.read(EE_HORA_DORMIR);
   minutosDormir = EEPROM.read(EE_MINUTOS_DORMIR);
   
@@ -198,8 +306,17 @@ void cargarConfiguracionDesdeEEPROM() {
   napDuracionHoras = napDuracionHoras % 4;
   
   Serial.println(F("Configuración cargada desde EEPROM:"));
-  Serial.print(F("  Wake up: ")); Serial.print(horaDespertar); Serial.print(F(":")); 
-  if (minutosDespertar < 10) Serial.print(F("0")); Serial.println(minutosDespertar);
+  Serial.print(F("  Wake slots: ")); Serial.println(wakeCount);
+  for (uint8_t i = 0; i < wakeCount; i++) {
+    Serial.print(F("    "));
+    Serial.print(wakeHora[i]);
+    Serial.print(F(":"));
+    if (wakeMinutos[i] < 10) Serial.print(F("0"));
+    Serial.print(wakeMinutos[i]);
+    Serial.print(F(" ["));
+    Serial.print(getDayRangeShort(wakeRango[i]));
+    Serial.println(F("]"));
+  }
   Serial.print(F("  Sleep at: ")); Serial.print(horaDormir); Serial.print(F(":")); 
   if (minutosDormir < 10) Serial.print(F("0")); Serial.println(minutosDormir);
   Serial.print(F("  Nap: ")); Serial.println(napActivo ? F("On") : F("Off"));
@@ -213,11 +330,18 @@ void cargarConfiguracionDesdeEEPROM() {
 
 void guardarHorariosEnEEPROM() {
   Serial.println(F("Guardando horarios en EEPROM..."));
-  EEPROM.update(EE_HORA_DESPERTAR, horaDespertar);
-  EEPROM.update(EE_MINUTOS_DESPERTAR, minutosDespertar);
+  escribirSlotsWakeEnEEPROM();
   EEPROM.update(EE_HORA_DORMIR, horaDormir);
   EEPROM.update(EE_MINUTOS_DORMIR, minutosDormir);
   Serial.println(F("Horarios guardados en EEPROM"));
+}
+
+void guardarWakeEnEEPROM() {
+  Serial.println(F("Guardando horarios de despertar en EEPROM..."));
+  escribirSlotsWakeEnEEPROM();
+  Serial.print(F("  Wake slots: "));
+  Serial.println(wakeCount);
+  Serial.println(F("Horarios de despertar guardados en EEPROM"));
 }
 
 void guardarNapConfigEnEEPROM() {
@@ -228,6 +352,94 @@ void guardarNapConfigEnEEPROM() {
   EEPROM.update(EE_NAP_DURACION_HORAS, napDuracionHoras);
   EEPROM.update(EE_NAP_DURACION_MINUTOS, napDuracionMinutos);
   Serial.println(F("Configuración Nap guardada en EEPROM"));
+}
+
+void copiarEntradaProgmem(const char* tabla, uint8_t index, char* buffer, uint8_t bufferSize) {
+  const char *ptr = tabla;
+  for (uint8_t i = 0; i < index; i++) {
+    while (pgm_read_byte(ptr)) ptr++;
+    ptr++;
+  }
+  uint8_t j = 0;
+  char c;
+  while ((c = pgm_read_byte(ptr++)) && j < bufferSize - 1) {
+    buffer[j++] = c;
+  }
+  buffer[j] = '\0';
+}
+
+const char* getDayRangeLabel(uint8_t index) {
+  static char buffer[20];
+  if (index >= DAY_RANGE_COUNT) index = DAY_ALL;
+  copiarEntradaProgmem(dayRangeLabels, index, buffer, sizeof(buffer));
+  return buffer;
+}
+
+const char* getDayRangeShort(uint8_t index) {
+  static char buffer[4];
+  if (index >= DAY_RANGE_COUNT) index = DAY_ALL;
+  copiarEntradaProgmem(dayRangeShort, index, buffer, sizeof(buffer));
+  return buffer;
+}
+
+const char* getWeekdayName(uint8_t dow) {
+  static char buffer[4];
+  if (dow > 6) dow = 0;
+  copiarEntradaProgmem(weekdayNames, dow, buffer, sizeof(buffer));
+  return buffer;
+}
+
+const char* getWeekdayFullName(uint8_t dow) {
+  static char buffer[10];
+  if (dow > 6) dow = 0;
+  copiarEntradaProgmem(weekdayFullNames, dow, buffer, sizeof(buffer));
+  return buffer;
+}
+
+uint8_t especificidadRango(uint8_t rango) {
+  if (rango >= DAY_SUN) return 2;
+  if (rango == DAY_WEEK || rango == DAY_WEEKEND) return 1;
+  return 0;
+}
+
+bool rangoCoincide(uint8_t rango, uint8_t dow) {
+  if (rango == DAY_ALL) return true;
+  if (rango == DAY_WEEK) return dow >= 1 && dow <= 5;
+  if (rango == DAY_WEEKEND) return dow == 0 || dow == 6;
+  return dow == (uint8_t)(rango - DAY_SUN);
+}
+
+// Devuelve false si hoy no hay ningún horario. En empate gana el de más arriba.
+bool horarioDespertarDeHoy(uint8_t &hora, uint8_t &minuto) {
+  int bestSpec = -1;
+  int bestIndex = -1;
+  uint8_t dow = now.dayOfTheWeek();
+  for (uint8_t i = 0; i < wakeCount; i++) {
+    if (!rangoCoincide(wakeRango[i], dow)) continue;
+    uint8_t spec = especificidadRango(wakeRango[i]);
+    if ((int)spec > bestSpec) {
+      bestSpec = spec;
+      bestIndex = i;
+    }
+  }
+  if (bestIndex < 0) return false;
+  hora = wakeHora[bestIndex];
+  minuto = wakeMinutos[bestIndex];
+  return true;
+}
+
+uint8_t totalOpcionesWakeMenu() {
+  return wakeCount + (wakeCount < MAX_WAKE_SLOTS ? 1 : 0) + 1;
+}
+
+void imprimirHoraConRango(uint8_t hora, uint8_t minutos, uint8_t rango) {
+  oled.print(hora);
+  oled.print(":");
+  if (minutos < 10) oled.print("0");
+  oled.print(minutos);
+  oled.print("[");
+  oled.print(getDayRangeShort(rango));
+  oled.print("]");
 }
 
 // Función para obtener texto de forceColor desde PROGMEM (actualizada)
@@ -294,7 +506,7 @@ void setup() {
   mostrarPantallaPrincipal();
   pantallaApagada = false;
   
-  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.43 (PANTALLA ESPECIAL 12-HOUR SLEEP) ==="));
+  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.47 (HORARIOS DE DESPERTAR POR DIA) ==="));
   Serial.print(F("12-hour sleep configurado a: "));
   Serial.print(DOCE_HORAS_QUINCE_MIN_MS / 1000 / 60 / 60.0, 2);
   Serial.println(F(" horas totales (12h + 15min transición)"));
@@ -334,7 +546,7 @@ void loop() {
     Serial.println(F(" FINALIZADO - Timeout 1 hora"));
     
     // Actualizar pantalla si está en menú principal
-    if (!pantallaApagada && !enMenuSettings && !editandoHora && !enForceColorMenu && !enMenuAbout && !enNapMenu && !modoDormirMenuActivo && !modoDoceHorasMenuActivo) {
+    if (!pantallaApagada && !enMenuSettings && !editandoHora && !enForceColorMenu && !enMenuAbout && !enNapMenu && !enWakeUpMenu && !modoDormirMenuActivo && !modoDoceHorasMenuActivo) {
       mostrarPantallaPrincipal();
     }
   }
@@ -349,7 +561,7 @@ void loop() {
     ultimoMinutoImpreso = minuto;
 
     // Actualizar pantalla solo si no estamos en ningún menú y la pantalla está encendida
-    if (!botonPresionado && !enMenuSettings && !editandoHora && !enForceColorMenu && !pantallaApagada && !enMenuAbout && !enNapMenu && !modoDormirMenuActivo && !modoDoceHorasMenuActivo) {
+    if (!botonPresionado && !enMenuSettings && !editandoHora && !enForceColorMenu && !pantallaApagada && !enMenuAbout && !enNapMenu && !enWakeUpMenu && !modoDormirMenuActivo && !modoDoceHorasMenuActivo) {
       mostrarPantallaPrincipal();
     } else if (modoDormirMenuActivo && !pantallaApagada) {
       mostrarPantallaDormir();
@@ -470,10 +682,16 @@ void manejarModoSiesta() {
 
 bool modoTenueActivo() {
   int tiempoActual = now.hour() * 60 + now.minute();
-  int tiempoDespertar = horaDespertar * 60 + minutosDespertar;
+  int tiempoDormir = horaDormir * 60 + minutosDormir;
+  uint8_t horaWake;
+  uint8_t minWake;
+  if (!horarioDespertarDeHoy(horaWake, minWake)) {
+    return tiempoActual < tiempoDormir;
+  }
+  int tiempoDespertar = horaWake * 60 + minWake;
   
-  return (tiempoActual < tiempoDespertar + 60) || // Hasta 8:30 AM
-         (tiempoActual >= horaDormir * 60 + minutosDormir); // Después de 7:30 PM
+  return (tiempoActual < tiempoDespertar + 60) ||
+         (tiempoActual >= tiempoDormir);
 }
 
 void manejarBotones() {
@@ -538,7 +756,7 @@ void encenderPantalla() {
   pantallaApagada = false;
   ultimaInteraccion = millis();
   
-  if (!editandoHora && !enMenuSettings && !enForceColorMenu && !enMenuAbout && !enNapMenu) {
+  if (!editandoHora && !enMenuSettings && !enForceColorMenu && !enMenuAbout && !enNapMenu && !enWakeUpMenu) {
     if (modoDormirMenuActivo) {
       mostrarPantallaDormir();
     } else if (modoDoceHorasMenuActivo) {
@@ -550,6 +768,12 @@ void encenderPantalla() {
     mostrarMenuAbout();
   } else if (enNapMenu) {
     mostrarNapMenu();
+  } else if (enWakeUpMenu) {
+    if (editandoWakeSlot) {
+      mostrarEdicionWake();
+    } else {
+      mostrarWakeUpMenu();
+    }
   } else if (enForceColorMenu) {
     mostrarForceColorMenu();
   }
@@ -615,25 +839,40 @@ void procesarBotonSelect() {
         break;
     }
   }
+  else if (enWakeUpMenu) {
+    procesarBotonSelectWakeMenu();
+  }
   else if (editandoHora) {
-    if (editandoCampo == 0) {
+    if (editandoReloj && editandoCampo < 2) {
+      editandoCampo++; // hora -> minutos -> día
+      mostrarEdicionHora();
+    } else if (!editandoReloj && editandoCampo == 0) {
       editandoCampo = 1; // Cambiar a editar minutos
       mostrarEdicionHora();
     } else {
-      // Guardar y salir al presionar Select en minutos
+      // Guardar y salir al presionar Select en el último campo
       if (editandoReloj) {
-        // Aplicar la hora al RTC real usando las variables temporales
-        DateTime nuevaHora = DateTime(now.year(), now.month(), now.day(), 
+        // La hora y el día se escriben juntos en el RTC.
+        // dayOfTheWeek() sale de la fecha, así que se corre 0-6 días.
+        uint8_t diaActual = now.dayOfTheWeek();
+        uint8_t delta = (uint8_t)((diaTemporalReloj - diaActual + 7) % 7);
+        DateTime nuevaHora = DateTime(now.year(), now.month(), now.day(),
                                       horaTemporalReloj, minutosTemporalReloj, 0);
+        nuevaHora = nuevaHora + TimeSpan(delta, 0, 0, 0);
         rtc.adjust(nuevaHora);
         Serial.print(F("RTC ajustado a: "));
+        Serial.print(nuevaHora.year());
+        Serial.print(F("-"));
+        Serial.print(nuevaHora.month());
+        Serial.print(F("-"));
+        Serial.print(nuevaHora.day());
+        Serial.print(F(" "));
+        Serial.print(getWeekdayFullName(nuevaHora.dayOfTheWeek()));
+        Serial.print(F(" "));
         Serial.print(horaTemporalReloj);
         Serial.print(F(":"));
         if (minutosTemporalReloj < 10) Serial.print(F("0"));
         Serial.println(minutosTemporalReloj);
-      } else if (editandoWakeUp) {
-        // Guardar Wake up en EEPROM
-        guardarHorariosEnEEPROM();
       } else {
         // Guardar Sleep at en EEPROM
         guardarHorariosEnEEPROM();
@@ -649,16 +888,15 @@ void procesarBotonSelect() {
   }
   else if (enMenuSettings) {
     if (settingOpcion == 0) { // Wake up
-      editandoHora = true;
-      editandoReloj = false;
-      editandoWakeUp = true;
-      editandoCampo = 0;
-      mostrarEdicionHora();
+      enWakeUpMenu = true;
+      editandoWakeSlot = false;
+      wakeMenuOpcion = 0;
+      wakeScrollOffset = 0;
+      mostrarWakeUpMenu();
     }
     else if (settingOpcion == 1) { // Sleep at
       editandoHora = true;
       editandoReloj = false;
-      editandoWakeUp = false;
       editandoCampo = 0;
       mostrarEdicionHora();
     }
@@ -674,9 +912,10 @@ void procesarBotonSelect() {
       editandoHora = true;
       editandoReloj = true;
       editandoCampo = 0;
-      // Usamos las variables temporales en lugar de horaDespertar/minutosDespertar
+      // Usamos las variables temporales para no tocar los horarios guardados
       horaTemporalReloj = now.hour();
       minutosTemporalReloj = now.minute();
+      diaTemporalReloj = now.dayOfTheWeek();
       mostrarEdicionHora();
     }
     else if (settingOpcion == 4) { // About
@@ -883,6 +1122,82 @@ void procesarBotonSelectNapMenu() {
   mostrarNapMenu();
 }
 
+void procesarBotonSelectWakeMenu() {
+  if (editandoWakeSlot) {
+    if (wakeEditCampo < 2) {
+      wakeEditCampo++;
+      mostrarEdicionWake();
+      return;
+    }
+
+    if (agregandoWake) {
+      if (wakeCount < MAX_WAKE_SLOTS) {
+        wakeHora[wakeCount] = wakeEditHora;
+        wakeMinutos[wakeCount] = wakeEditMinutos;
+        wakeRango[wakeCount] = wakeEditRango;
+        wakeMenuOpcion = wakeCount;
+        wakeCount++;
+      }
+    } else if (wakeEditIndex < wakeCount) {
+      wakeHora[wakeEditIndex] = wakeEditHora;
+      wakeMinutos[wakeEditIndex] = wakeEditMinutos;
+      wakeRango[wakeEditIndex] = wakeEditRango;
+    }
+
+    guardarWakeEnEEPROM();
+    editandoWakeSlot = false;
+    agregandoWake = false;
+    wakeEditCampo = 0;
+    wakeScrollOffset = (wakeMenuOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+    mostrarWakeUpMenu();
+    return;
+  }
+
+  uint8_t total = totalOpcionesWakeMenu();
+  if (wakeMenuOpcion < wakeCount) {
+    wakeEditIndex = wakeMenuOpcion;
+    wakeEditHora = wakeHora[wakeEditIndex];
+    wakeEditMinutos = wakeMinutos[wakeEditIndex];
+    wakeEditRango = wakeRango[wakeEditIndex];
+    agregandoWake = false;
+    editandoWakeSlot = true;
+    wakeEditCampo = 0;
+    mostrarEdicionWake();
+  } else if (wakeCount < MAX_WAKE_SLOTS && wakeMenuOpcion == wakeCount) {
+    wakeEditHora = DEFAULT_HORA_DESPERTAR;
+    wakeEditMinutos = DEFAULT_MINUTOS_DESPERTAR;
+    wakeEditRango = DAY_ALL;
+    agregandoWake = true;
+    editandoWakeSlot = true;
+    wakeEditCampo = 0;
+    mostrarEdicionWake();
+  } else if (wakeMenuOpcion == total - 1) {
+    enWakeUpMenu = false;
+    editandoWakeSlot = false;
+    enMenuSettings = true;
+    mostrarMenuSettings();
+  }
+}
+
+void procesarBotonMoveWakeMenu() {
+  if (editandoWakeSlot) {
+    if (wakeEditCampo == 0) {
+      wakeEditHora = (wakeEditHora + 1) % 24;
+    } else if (wakeEditCampo == 1) {
+      wakeEditMinutos = (wakeEditMinutos + 5) % 60;
+    } else {
+      wakeEditRango = (wakeEditRango + 1) % DAY_RANGE_COUNT;
+    }
+    mostrarEdicionWake();
+    return;
+  }
+
+  uint8_t total = totalOpcionesWakeMenu();
+  wakeMenuOpcion = (wakeMenuOpcion + 1) % total;
+  wakeScrollOffset = (wakeMenuOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+  mostrarWakeUpMenu();
+}
+
 void procesarBotonMove() {
   if (enNapMenu) {
     procesarBotonMoveNapMenu();
@@ -896,23 +1211,23 @@ void procesarBotonMove() {
     forceColorOpcion = (forceColorOpcion + 1) % totalForceColorOpciones;
     mostrarForceColorMenu();
   }
+  else if (enWakeUpMenu) {
+    procesarBotonMoveWakeMenu();
+  }
   else if (editandoHora) {
     if (editandoCampo == 0) { // Editando hora
       if (editandoReloj) {
         // Para el reloj: incrementar hora normalmente usando variables temporales
         horaTemporalReloj = (horaTemporalReloj + 1) % 24;
-      } else if (editandoWakeUp) {
-        horaDespertar = (horaDespertar + 1) % 24;
       } else {
         horaDormir = (horaDormir + 1) % 24;
       }
+    } else if (editandoReloj && editandoCampo == 2) {
+      diaTemporalReloj = (diaTemporalReloj + 1) % 7;
     } else { // Editando minutos
       if (editandoReloj) {
         // Para el reloj: incrementar minuto a minuto usando variables temporales
         minutosTemporalReloj = (minutosTemporalReloj + 1) % 60;
-      } else if (editandoWakeUp) {
-        // Para wake up: incrementar de 5 en 5 minutos
-        minutosDespertar = (minutosDespertar + 5) % 60;
       } else {
         // Para sleep: incrementar de 5 en 5 minutos
         minutosDormir = (minutosDormir + 5) % 60;
@@ -1097,8 +1412,30 @@ void manejarLuces() {
 
   // 6. LÓGICA NORMAL DE HORARIOS
   int tiempoActual = now.hour() * 60 + now.minute();
-  int tiempoDespertar = horaDespertar * 60 + minutosDespertar;
   int tiempoDormir = horaDormir * 60 + minutosDormir;
+
+  // Pasada la hora de dormir siempre es rojo fuerte, aunque el horario
+  // de despertar de hoy caiga después o no exista.
+  if (tiempoActual >= tiempoDormir) {
+    setLuz(ledRojo, intensidadRojoMax);
+    return;
+  }
+
+  uint8_t horaWake;
+  uint8_t minWake;
+  bool hayWake = horarioDespertarDeHoy(horaWake, minWake);
+
+  // Sin horario para hoy: rojo tenue hasta 30 minutos antes de dormir.
+  if (!hayWake) {
+    if (tiempoActual < tiempoDormir - 30) {
+      setLuz(ledRojo, intensidadRojoTenue);
+    } else {
+      setLuz(ledAmarillo, intensidadAmarilloMax);
+    }
+    return;
+  }
+
+  int tiempoDespertar = horaWake * 60 + minWake;
 
   // 12:00 AM - 7:15 AM (rojo tenue)
   if (tiempoActual < tiempoDespertar - 15) {
@@ -1117,12 +1454,8 @@ void manejarLuces() {
     setLuz(ledVerde, intensidadVerdeMax);
   }
   // 7:00 PM - 7:30 PM (amarillo máximo)
-  else if (tiempoActual < tiempoDormir) {
-    setLuz(ledAmarillo, intensidadAmarilloMax);
-  }
-  // Después de 7:30 PM (rojo máximo)
   else {
-    setLuz(ledRojo, intensidadRojoMax);
+    setLuz(ledAmarillo, intensidadAmarilloMax);
   }
 }
 
@@ -1167,22 +1500,28 @@ void manejarGameMode() {
 }
 
 void setLuz(int pin, int intensidad) {
+  // Apagar las otras primero. digitalWrite después de analogWrite
+  // cancela el PWM del LED que acabamos de encender.
+  if (pin != ledVerde) analogWrite(ledVerde, 0);
+  if (pin != ledAmarillo) analogWrite(ledAmarillo, 0);
+  if (pin != ledRojo) analogWrite(ledRojo, 0);
   analogWrite(pin, intensidad);
-  if (pin != ledVerde) digitalWrite(ledVerde, LOW);
-  if (pin != ledAmarillo) digitalWrite(ledAmarillo, LOW);
-  if (pin != ledRojo) digitalWrite(ledRojo, LOW);
 }
 
 void mostrarPantallaPrincipal() {
   oled.clear();
   
-  // Primera línea: Hora y versión
+  // Primera línea: día, hora y marca. Dos espacios: el borde izquierdo recorta el primer carácter.
+  oled.print("  ");
+  oled.print(getWeekdayName(now.dayOfTheWeek()));
   oled.print(" ");
   oled.print(now.hour());
   oled.print(":");
   if (now.minute() < 10) oled.print("0");
   oled.print(now.minute());
-  oled.println("              iTronnix");
+  const char marca[] = "iTronnix";
+  oled.setCursor(oled.displayWidth() - oled.strWidth(marca), 0);
+  oled.println(marca);
   
   // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
   uint8_t opcionInicial = (opcionSeleccionada / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
@@ -1359,11 +1698,12 @@ void mostrarMenuSettings() {
     
     switch(i) {
       case 0: // Wake up
-        oled.print("Wake up ");
-        oled.print(horaDespertar);
-        oled.print(":");
-        if (minutosDespertar < 10) oled.print("0");
-        oled.print(minutosDespertar);
+        if (wakeCount <= 1) {
+          oled.print("Wake up ");
+          imprimirHoraConRango(wakeHora[0], wakeMinutos[0], wakeRango[0]);
+        } else {
+          oled.print("Wake up (custom)");
+        }
         break;
         
       case 1: // Sleep at
@@ -1550,7 +1890,7 @@ void mostrarMenuAbout() {
   
   // Versión
   oled.print(" Version: ");
-  oled.println("1.43");
+  oled.println("1.47");
 
   // Website
   oled.println(" www.iTronnix.com");
@@ -1625,14 +1965,81 @@ void mostrarForceColorMenu() {
   oled.println("          Select");
 }
 
+void mostrarWakeUpMenu() {
+  oled.clear();
+  oled.println(" WAKE UP SETUP");
+
+  uint8_t total = totalOpcionesWakeMenu();
+  uint8_t opcionInicial = wakeScrollOffset;
+  uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, total);
+
+  for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
+    if (i == wakeMenuOpcion) {
+      oled.print(">");
+    } else {
+      oled.print(" ");
+    }
+
+    if (i < wakeCount) {
+      oled.print("Edit ");
+      imprimirHoraConRango(wakeHora[i], wakeMinutos[i], wakeRango[i]);
+    } else if (wakeCount < MAX_WAKE_SLOTS && i == wakeCount) {
+      oled.print("Add new");
+    } else {
+      oled.print("Back");
+    }
+    oled.println();
+  }
+
+  for (uint8_t i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
+    oled.println();
+  }
+
+  oled.print(" Move ");
+  oled.print(wakeMenuOpcion + 1);
+  oled.print("/");
+  oled.print(total);
+  if (wakeMenuOpcion == total - 1) {
+    oled.println("          Select");
+  } else {
+    oled.println("           Apply");
+  }
+}
+
+void mostrarEdicionWake() {
+  oled.clear();
+  oled.println(" WAKE UP SETUP");
+
+  if (wakeEditCampo == 0) {
+    oled.print(">");
+  } else {
+    oled.print(" ");
+  }
+  oled.print(wakeEditHora);
+  oled.print(":");
+  if (wakeEditCampo == 1) {
+    oled.print(">");
+  }
+  if (wakeEditMinutos < 10) oled.print("0");
+  oled.print(wakeEditMinutos);
+  oled.println();
+
+  if (wakeEditCampo == 2) {
+    oled.print(">");
+  } else {
+    oled.print(" ");
+  }
+  oled.println(getDayRangeLabel(wakeEditRango));
+
+  oled.println(" Change             Apply");
+}
+
 void mostrarEdicionHora() {
   oled.clear();
   
   // Título diferente según lo que estemos editando
   if (editandoReloj) {
     oled.println(" CLOCK SETUP");
-  } else if (editandoWakeUp) {
-    oled.println(" WAKE UP SETUP");
   } else {
     oled.println(" SLEEP SETUP");
   }
@@ -1642,8 +2049,6 @@ void mostrarEdicionHora() {
     oled.print(">");
     if (editandoReloj) {
       oled.print(horaTemporalReloj);
-    } else if (editandoWakeUp) {
-      oled.print(horaDespertar);
     } else {
       oled.print(horaDormir);
     }
@@ -1651,8 +2056,6 @@ void mostrarEdicionHora() {
     oled.print(" ");
     if (editandoReloj) {
       oled.print(horaTemporalReloj);
-    } else if (editandoWakeUp) {
-      oled.print(horaDespertar);
     } else {
       oled.print(horaDormir);
     }
@@ -1665,9 +2068,6 @@ void mostrarEdicionHora() {
     if (editandoReloj) {
       if (minutosTemporalReloj < 10) oled.print("0");
       oled.print(minutosTemporalReloj);
-    } else if (editandoWakeUp) {
-      if (minutosDespertar < 10) oled.print("0");
-      oled.print(minutosDespertar);
     } else {
       if (minutosDormir < 10) oled.print("0");
       oled.print(minutosDormir);
@@ -1676,9 +2076,6 @@ void mostrarEdicionHora() {
     if (editandoReloj) {
       if (minutosTemporalReloj < 10) oled.print("0");
       oled.print(minutosTemporalReloj);
-    } else if (editandoWakeUp) {
-      if (minutosDespertar < 10) oled.print("0");
-      oled.print(minutosDespertar);
     } else {
       if (minutosDormir < 10) oled.print("0");
       oled.print(minutosDormir);
@@ -1686,7 +2083,16 @@ void mostrarEdicionHora() {
   }
   
   oled.println();
-  oled.println();
+  if (editandoReloj) {
+    if (editandoCampo == 2) {
+      oled.print(">");
+    } else {
+      oled.print("  ");
+    }
+    oled.println(getWeekdayFullName(diaTemporalReloj));
+  } else {
+    oled.println();
+  }
   
   // Instrucciones en la parte inferior
   if (editandoCampo == 0) {
