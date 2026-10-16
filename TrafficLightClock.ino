@@ -1,4 +1,4 @@
-// VERSION: 1.47 - Horarios de despertar por día (máximo 3)
+// VERSION: 1.60 - Nap Hour y Duration con Save
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -17,7 +17,8 @@ const unsigned long TIEMPO_BLOQUEO_BOTONES = 300; // 300ms de bloqueo después d
 // Direcciones EEPROM para configuración persistente
 #define EE_MAGIC_BYTE 0          // Byte mágico para verificar si EEPROM está inicializada
 #define EE_MAGIC_VALUE_V143 0x55 // Layout de la v1.43 (un solo horario de despertar)
-#define EE_MAGIC_VALUE 0x56      // Layout v1.44 (hasta 3 horarios con rango de días)
+#define EE_MAGIC_VALUE_V144 0x56 // Layout v1.44 (horarios compactos 1-3)
+#define EE_MAGIC_VALUE 0x57      // Layout v1.54 (3 slots fijos, bit de ocupado)
 #define EE_HORA_DESPERTAR 1      // Hora del horario 1 (se conserva la dirección de v1.43)
 #define EE_MINUTOS_DESPERTAR 2   // Minutos del horario 1
 #define EE_HORA_DORMIR 3         // Hora de dormir
@@ -28,7 +29,7 @@ const unsigned long TIEMPO_BLOQUEO_BOTONES = 300; // 300ms de bloqueo después d
 #define EE_NAP_DURACION_HORAS 8  // Duración horas nap
 #define EE_NAP_DURACION_MINUTOS 9 // Duración minutos nap
 #define EE_WAKE0_RANGO 10        // Rango de días del horario 1
-#define EE_WAKE_COUNT 11         // Cantidad de horarios (1-3)
+#define EE_WAKE_COUNT 11         // Bits 0-2: el slot correspondiente tiene hora
 #define EE_WAKE1_HORA 12         // Horario 2
 #define EE_WAKE1_MINUTOS 13
 #define EE_WAKE1_RANGO 14
@@ -65,7 +66,7 @@ const uint8_t DEFAULT_NAP_DURACION_MINUTOS = 30;
 uint8_t wakeHora[MAX_WAKE_SLOTS];
 uint8_t wakeMinutos[MAX_WAKE_SLOTS];
 uint8_t wakeRango[MAX_WAKE_SLOTS];
-uint8_t wakeCount = 1;
+uint8_t wakeOcupado = 1; // Bit i encendido: el slot i tiene hora
 uint8_t horaDormir;
 uint8_t minutosDormir;
 
@@ -94,9 +95,15 @@ uint8_t napDuracionHoras; // Duración en horas (0-3)
 uint8_t napDuracionMinutos; // Duración en minutos
 bool enNapMenu = false; // Controlar si estamos en el menú de Nap
 uint8_t napMenuOpcion = 0; // 0=Nap toggle, 1=Start, 2=Duration, 3=Back
-bool napEditando = false; // Estamos editando el horario?
-bool napEditandoStart = true; // true=Editando Start, false=Editando Duration
+bool napEditando = false; // Estamos editando Hour o Duration?
+bool napEditandoStart = true; // true=Hour, false=Duration
+bool napConfirmando = false;
+uint8_t napConfirmOpcion = 0; // 0=Save, 1=Cancel
 uint8_t napEditandoCampo = 0; // 0=hora/horas, 1=minuto/minutos
+uint8_t napHoraTemporal = 0;
+uint8_t napMinutoTemporal = 0;
+uint8_t napDuracionHorasTemporal = 0;
+uint8_t napDuracionMinutosTemporal = 0;
 const uint8_t napTotalOpciones = 4; // Nap toggle, Start, Duration, Back
 
 // NUEVAS VARIABLES PARA NAP MODE COMPLETO
@@ -119,15 +126,29 @@ const unsigned long DOCE_HORAS_MS = 12UL * 60UL * 60UL * 1000UL; // 12 horas en 
 const unsigned long QUINCE_MINUTOS_MS = 15UL * 60UL * 1000UL;    // 15 minutos en milisegundos
 const unsigned long DOCE_HORAS_QUINCE_MIN_MS = DOCE_HORAS_MS + QUINCE_MINUTOS_MS; // 12h 15min
 
-// VARIABLES FORCE COLOR EXPANDIDAS (8 opciones en lugar de 4)
-uint8_t forceColor = 0; // 0=Off, 1=Green High, 2=Green Low, 3=Yellow High, 4=Yellow Low, 5=Red High, 6=Red Low, 7=Back
-// PROGMEM actualizado con 8 opciones
-const char forceColorTexto[] PROGMEM = "Off\0GH\0GL\0YH\0YL\0RH\0RL\0Back"; // Iniciales en brackets
+// Force color: el modo decide cuánto dura y el color decide qué luz.
+#define FORCE_MODE_OFF 0
+#define FORCE_MODE_PERSISTENT 1
+#define FORCE_MODE_1HOUR 2
+#define FORCE_MODE_UNTIL 3
 
-// ==================== Timeout para Force Color ====================
-unsigned long tiempoInicioForceColor = 0; // Cuándo se activó el force color
-const unsigned long TIEMPO_FORCE_COLOR_MS = 60UL * 60UL * 1000UL; // 1 hora en milisegundos
-// ===================================================================
+#define FORCE_COLOR_GREEN_HI 0
+#define FORCE_COLOR_GREEN_LO 1
+#define FORCE_COLOR_YELLOW_HI 2
+#define FORCE_COLOR_YELLOW_LO 3
+#define FORCE_COLOR_RED_HI 4
+#define FORCE_COLOR_RED_LO 5
+#define FORCE_COLOR_ALL_OFF 6
+
+#define FC_ROOT 0
+#define FC_MODE 1
+#define FC_COLOR 2
+
+uint8_t forceMode = FORCE_MODE_OFF;
+uint8_t forceColorSel = FORCE_COLOR_GREEN_HI;
+unsigned long tiempoInicioForceColor = 0;
+uint8_t faseAlForzar = 0;
+const unsigned long TIEMPO_FORCE_COLOR_MS = 60UL * 60UL * 1000UL;
 
 // Variables para Game mode (nuevo)
 bool gameMode = false;
@@ -166,14 +187,25 @@ bool editandoHora = false;
 bool editandoReloj = false;          // Para diferenciar si estamos editando el reloj
 uint8_t opcionSeleccionada = 0;      // 0=Sleep mode, 1=12-hour sleep, 2=Force color, 3=Game mode, 4=Settings
 uint8_t settingOpcion = 0;           // 0=Wake up, 1=Sleep at, 2=Nap, 3=Clock setup, 4=About, 5=Back
-uint8_t editandoCampo = 0;           // 0=hora, 1=minutos
+uint8_t editandoCampo = 0;           // 0=hora, 1=minutos, 2=día en el reloj
+bool confirmandoEdicionHora = false;
+uint8_t horaConfirmOpcion = 0;       // 0=Save, 1=Cancel
+uint8_t horaTemporalDormir = 0;
+uint8_t minutosTemporalDormir = 0;
 
-// Menú Wake up setup (lista + editor de hora, minutos y rango)
+// Menú Wake up: lista, submenu del slot y editor con Save/Cancel
+#define WAKE_LISTA 0
+#define WAKE_SLOT 1
+#define WAKE_EDIT 2
+#define WAKE_CONFIRM 3
+
 bool enWakeUpMenu = false;
-bool editandoWakeSlot = false;
 bool agregandoWake = false;
+uint8_t wakePantalla = WAKE_LISTA;
 uint8_t wakeMenuOpcion = 0;
 uint8_t wakeScrollOffset = 0;
+uint8_t wakeSlotMenuOpcion = 0;      // 0=Edit, 1=Delete, 2=Back
+uint8_t wakeConfirmOpcion = 0;       // 0=Save, 1=Cancel
 uint8_t wakeEditCampo = 0;           // 0=hora, 1=minutos, 2=rango de días
 uint8_t wakeEditIndex = 0;
 uint8_t wakeEditHora = DEFAULT_HORA_DESPERTAR;
@@ -184,10 +216,13 @@ const uint8_t totalSettingOpciones = 6;  // Cambiado de 4 a 6 (agregamos Nap y A
 uint8_t settingScrollOffset = 0;     // Para controlar qué opciones mostrar en pantalla
 const uint8_t MAX_OPCIONES_POR_PANTALLA = 2; // Máximo de opciones visibles a la vez
 
-// Nueva variable para Force color menu
+// Force color: pantalla raíz, lista de modo y lista de color.
 bool enForceColorMenu = false;
-uint8_t forceColorOpcion = 0;        // 0=Green High, 1=Green Low, 2=Yellow High, 3=Yellow Low, 4=Red High, 5=Red Low, 6=Off, 7=Back
-const uint8_t totalForceColorOpciones = 8; // Cambiado de 5 a 8
+uint8_t forceColorPantalla = FC_ROOT;
+uint8_t forceColorOpcion = 0;
+const uint8_t totalForceColorRoot = 3;
+const uint8_t totalForceColorModos = 5;
+const uint8_t totalForceColorColores = 8;
 
 // RTC
 RTC_DS3231 rtc;
@@ -213,7 +248,7 @@ void escribirSlotsWakeEnEEPROM() {
   EEPROM.update(EE_HORA_DESPERTAR, wakeHora[0]);
   EEPROM.update(EE_MINUTOS_DESPERTAR, wakeMinutos[0]);
   EEPROM.update(EE_WAKE0_RANGO, wakeRango[0]);
-  EEPROM.update(EE_WAKE_COUNT, wakeCount);
+  EEPROM.update(EE_WAKE_COUNT, wakeOcupado);
   EEPROM.update(EE_WAKE1_HORA, wakeHora[1]);
   EEPROM.update(EE_WAKE1_MINUTOS, wakeMinutos[1]);
   EEPROM.update(EE_WAKE1_RANGO, wakeRango[1]);
@@ -250,9 +285,20 @@ void inicializarEEPROM() {
     return;
   }
 
+  if (magic == EE_MAGIC_VALUE_V144) {
+    // El byte era una cantidad compacta (1-3). Pasa a bits de slot.
+    uint8_t count = EEPROM.read(EE_WAKE_COUNT);
+    if (count < 1 || count > MAX_WAKE_SLOTS) count = 1;
+    Serial.println(F("Migrando EEPROM 1.44 -> 1.54"));
+    EEPROM.update(EE_WAKE_COUNT, (uint8_t)((1 << count) - 1));
+    EEPROM.update(EE_MAGIC_BYTE, EE_MAGIC_VALUE);
+    Serial.println(F("EEPROM migrada; cada horario queda en su slot"));
+    return;
+  }
+
   if (magic == EE_MAGIC_VALUE_V143) {
     // Conserva la hora ya guardada en los bytes 1 y 2 y la marca como All days.
-    Serial.println(F("Migrando EEPROM 1.43 -> 1.44"));
+    Serial.println(F("Migrando EEPROM 1.43 -> 1.54"));
     EEPROM.update(EE_WAKE0_RANGO, DAY_ALL);
     EEPROM.update(EE_WAKE_COUNT, 1);
     EEPROM.update(EE_WAKE1_HORA, DEFAULT_HORA_DESPERTAR);
@@ -278,14 +324,13 @@ void cargarConfiguracionDesdeEEPROM() {
   wakeHora[0] = EEPROM.read(EE_HORA_DESPERTAR);
   wakeMinutos[0] = EEPROM.read(EE_MINUTOS_DESPERTAR);
   wakeRango[0] = EEPROM.read(EE_WAKE0_RANGO);
-  wakeCount = EEPROM.read(EE_WAKE_COUNT);
+  wakeOcupado = EEPROM.read(EE_WAKE_COUNT) & (uint8_t)((1 << MAX_WAKE_SLOTS) - 1);
   wakeHora[1] = EEPROM.read(EE_WAKE1_HORA);
   wakeMinutos[1] = EEPROM.read(EE_WAKE1_MINUTOS);
   wakeRango[1] = EEPROM.read(EE_WAKE1_RANGO);
   wakeHora[2] = EEPROM.read(EE_WAKE2_HORA);
   wakeMinutos[2] = EEPROM.read(EE_WAKE2_MINUTOS);
   wakeRango[2] = EEPROM.read(EE_WAKE2_RANGO);
-  if (wakeCount < 1 || wakeCount > MAX_WAKE_SLOTS) wakeCount = 1;
   for (uint8_t i = 0; i < MAX_WAKE_SLOTS; i++) {
     if (wakeHora[i] > 23) wakeHora[i] = DEFAULT_HORA_DESPERTAR;
     if (wakeMinutos[i] > 59) wakeMinutos[i] = DEFAULT_MINUTOS_DESPERTAR;
@@ -306,17 +351,7 @@ void cargarConfiguracionDesdeEEPROM() {
   napDuracionHoras = napDuracionHoras % 4;
   
   Serial.println(F("Configuración cargada desde EEPROM:"));
-  Serial.print(F("  Wake slots: ")); Serial.println(wakeCount);
-  for (uint8_t i = 0; i < wakeCount; i++) {
-    Serial.print(F("    "));
-    Serial.print(wakeHora[i]);
-    Serial.print(F(":"));
-    if (wakeMinutos[i] < 10) Serial.print(F("0"));
-    Serial.print(wakeMinutos[i]);
-    Serial.print(F(" ["));
-    Serial.print(getDayRangeShort(wakeRango[i]));
-    Serial.println(F("]"));
-  }
+  imprimirSlotsWakeSerial();
   Serial.print(F("  Sleep at: ")); Serial.print(horaDormir); Serial.print(F(":")); 
   if (minutosDormir < 10) Serial.print(F("0")); Serial.println(minutosDormir);
   Serial.print(F("  Nap: ")); Serial.println(napActivo ? F("On") : F("Off"));
@@ -339,8 +374,7 @@ void guardarHorariosEnEEPROM() {
 void guardarWakeEnEEPROM() {
   Serial.println(F("Guardando horarios de despertar en EEPROM..."));
   escribirSlotsWakeEnEEPROM();
-  Serial.print(F("  Wake slots: "));
-  Serial.println(wakeCount);
+  imprimirSlotsWakeSerial();
   Serial.println(F("Horarios de despertar guardados en EEPROM"));
 }
 
@@ -409,12 +443,84 @@ bool rangoCoincide(uint8_t rango, uint8_t dow) {
   return dow == (uint8_t)(rango - DAY_SUN);
 }
 
+bool slotWakeOcupado(uint8_t slot) {
+  return slot < MAX_WAKE_SLOTS && (wakeOcupado & (1 << slot));
+}
+
+uint8_t contarSlotsWake() {
+  uint8_t n = 0;
+  for (uint8_t i = 0; i < MAX_WAKE_SLOTS; i++) {
+    if (slotWakeOcupado(i)) n++;
+  }
+  return n;
+}
+
+uint8_t primerSlotWakeLibre() {
+  for (uint8_t i = 0; i < MAX_WAKE_SLOTS; i++) {
+    if (!slotWakeOcupado(i)) return i;
+  }
+  return 0xFF;
+}
+
+uint8_t slotDeOpcionWake(uint8_t opcion) {
+  uint8_t vistos = 0;
+  for (uint8_t i = 0; i < MAX_WAKE_SLOTS; i++) {
+    if (!slotWakeOcupado(i)) continue;
+    if (vistos == opcion) return i;
+    vistos++;
+  }
+  return 0xFF;
+}
+
+void seleccionarSlotEnLista(uint8_t slot) {
+  uint8_t idx = 0;
+  for (uint8_t i = 0; i < slot && i < MAX_WAKE_SLOTS; i++) {
+    if (slotWakeOcupado(i)) idx++;
+  }
+  wakeMenuOpcion = idx;
+  wakeScrollOffset = (wakeMenuOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+}
+
+void seleccionarFilaTrasBorrar(uint8_t slotBorrado) {
+  uint8_t idx = 0;
+  bool encontro = false;
+  for (uint8_t i = 0; i < MAX_WAKE_SLOTS; i++) {
+    if (!slotWakeOcupado(i)) continue;
+    if (i > slotBorrado) {
+      encontro = true;
+      break;
+    }
+    idx++;
+  }
+  wakeMenuOpcion = encontro ? idx : contarSlotsWake();
+  wakeScrollOffset = (wakeMenuOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+}
+
+void imprimirSlotsWakeSerial() {
+  Serial.print(F("  Wake slots: "));
+  Serial.println(contarSlotsWake());
+  for (uint8_t i = 0; i < MAX_WAKE_SLOTS; i++) {
+    if (!slotWakeOcupado(i)) continue;
+    Serial.print(F("    Time "));
+    Serial.print(i + 1);
+    Serial.print(F(": "));
+    Serial.print(wakeHora[i]);
+    Serial.print(F(":"));
+    if (wakeMinutos[i] < 10) Serial.print(F("0"));
+    Serial.print(wakeMinutos[i]);
+    Serial.print(F(" ["));
+    Serial.print(getDayRangeShort(wakeRango[i]));
+    Serial.println(F("]"));
+  }
+}
+
 // Devuelve false si hoy no hay ningún horario. En empate gana el de más arriba.
 bool horarioDespertarDeHoy(uint8_t &hora, uint8_t &minuto) {
   int bestSpec = -1;
   int bestIndex = -1;
   uint8_t dow = now.dayOfTheWeek();
-  for (uint8_t i = 0; i < wakeCount; i++) {
+  for (uint8_t i = 0; i < MAX_WAKE_SLOTS; i++) {
+    if (!slotWakeOcupado(i)) continue;
     if (!rangoCoincide(wakeRango[i], dow)) continue;
     uint8_t spec = especificidadRango(wakeRango[i]);
     if ((int)spec > bestSpec) {
@@ -429,7 +535,8 @@ bool horarioDespertarDeHoy(uint8_t &hora, uint8_t &minuto) {
 }
 
 uint8_t totalOpcionesWakeMenu() {
-  return wakeCount + (wakeCount < MAX_WAKE_SLOTS ? 1 : 0) + 1;
+  uint8_t ocupados = contarSlotsWake();
+  return ocupados + (ocupados < MAX_WAKE_SLOTS ? 1 : 0) + 1;
 }
 
 void imprimirHoraConRango(uint8_t hora, uint8_t minutos, uint8_t rango) {
@@ -442,37 +549,105 @@ void imprimirHoraConRango(uint8_t hora, uint8_t minutos, uint8_t rango) {
   oled.print("]");
 }
 
-// Función para obtener texto de forceColor desde PROGMEM (actualizada)
-const char* getForceColorTexto(uint8_t index) {
-  static char buffer[5]; // Para almacenar hasta "Back"
-  const char *ptr = forceColorTexto;
-  
-  for(uint8_t i = 0; i < index; i++) {
-    while(pgm_read_byte(ptr)) ptr++;
-    ptr++; // saltar el null terminator
+const char* etiquetaModoForce() {
+  switch (forceMode) {
+    case FORCE_MODE_PERSISTENT: return "On Per";
+    case FORCE_MODE_UNTIL: return "On Unt";
+    case FORCE_MODE_1HOUR: return "On 1hr";
+    default: return "Off";
   }
-  
-  uint8_t j = 0;
-  char c;
-  while((c = pgm_read_byte(ptr++)) && j < 4) {
-    buffer[j++] = c;
-  }
-  buffer[j] = '\0';
-  return buffer;
 }
 
-// Función para obtener el nombre completo de la opción Force Color
-const char* getForceColorNombreCompleto(uint8_t opcion) {
-  switch(opcion) {
-    case 0: return "Green high";
-    case 1: return "Green low";
-    case 2: return "Yellow high";
-    case 3: return "Yellow low";
-    case 4: return "Red high";
-    case 5: return "Red low";
-    case 6: return "Off";
-    case 7: return "Back";
-    default: return "Off";
+const char* etiquetaColorForce() {
+  switch (forceColorSel) {
+    case FORCE_COLOR_GREEN_HI: return "Green hi";
+    case FORCE_COLOR_GREEN_LO: return "Green lo";
+    case FORCE_COLOR_YELLOW_HI: return "Yellow hi";
+    case FORCE_COLOR_YELLOW_LO: return "Yellow lo";
+    case FORCE_COLOR_RED_HI: return "Red hi";
+    case FORCE_COLOR_RED_LO: return "Red lo";
+    default: return "All off";
+  }
+}
+
+const char* etiquetaCortaForce() {
+  if (forceMode == FORCE_MODE_OFF) return "Off";
+  switch (forceColorSel) {
+    case FORCE_COLOR_GREEN_HI: return "GH";
+    case FORCE_COLOR_GREEN_LO: return "GL";
+    case FORCE_COLOR_YELLOW_HI: return "YH";
+    case FORCE_COLOR_YELLOW_LO: return "YL";
+    case FORCE_COLOR_RED_HI: return "RH";
+    case FORCE_COLOR_RED_LO: return "RL";
+    default: return "AO";
+  }
+}
+
+uint8_t totalOpcionesForceColor() {
+  if (forceColorPantalla == FC_MODE) return totalForceColorModos;
+  if (forceColorPantalla == FC_COLOR) return totalForceColorColores;
+  return totalForceColorRoot;
+}
+
+// Fase del horario automático. Cambia en cada evento del ciclo.
+uint8_t faseHorario() {
+  int tiempoActual = now.hour() * 60 + now.minute();
+  int tiempoDormir = horaDormir * 60 + minutosDormir;
+
+  if (estaEnAvisoPrevioSiesta()) return 5;
+  if (estaDentroPlaceholderSiesta()) return 6;
+  if (tiempoActual >= tiempoDormir) return 8;
+
+  uint8_t horaWake;
+  uint8_t minWake;
+  if (!horarioDespertarDeHoy(horaWake, minWake)) {
+    if (tiempoActual < tiempoDormir - 30) return 9;
+    return 7;
+  }
+
+  int tiempoDespertar = horaWake * 60 + minWake;
+  if (tiempoActual < tiempoDespertar - 15) return 1;
+  if (tiempoActual < tiempoDespertar) return 2;
+  if (tiempoActual < tiempoDespertar + 60) return 3;
+  if (tiempoActual < tiempoDormir - 30) return 4;
+  return 7;
+}
+
+void aplicarColorForzado() {
+  switch (forceColorSel) {
+    case FORCE_COLOR_GREEN_HI:
+      setLuz(ledVerde, intensidadVerdeMax);
+      break;
+    case FORCE_COLOR_GREEN_LO:
+      setLuz(ledVerde, intensidadVerdeTenue);
+      break;
+    case FORCE_COLOR_YELLOW_HI:
+      setLuz(ledAmarillo, intensidadAmarilloMax);
+      break;
+    case FORCE_COLOR_YELLOW_LO:
+      setLuz(ledAmarillo, intensidadAmarilloTenue);
+      break;
+    case FORCE_COLOR_RED_HI:
+      setLuz(ledRojo, intensidadRojoMax);
+      break;
+    case FORCE_COLOR_RED_LO:
+      setLuz(ledRojo, intensidadRojoTenue);
+      break;
+    default:
+      analogWrite(ledVerde, 0);
+      analogWrite(ledAmarillo, 0);
+      analogWrite(ledRojo, 0);
+      break;
+  }
+}
+
+void terminarForceColor() {
+  forceMode = FORCE_MODE_OFF;
+  if (pantallaApagada) return;
+  if (enForceColorMenu) {
+    mostrarForceColorMenu();
+  } else if (!enMenuSettings && !editandoHora && !enMenuAbout && !enNapMenu && !enWakeUpMenu && !modoDormirMenuActivo && !modoDoceHorasMenuActivo) {
+    mostrarPantallaPrincipal();
   }
 }
 
@@ -506,7 +681,7 @@ void setup() {
   mostrarPantallaPrincipal();
   pantallaApagada = false;
   
-  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.47 (HORARIOS DE DESPERTAR POR DIA) ==="));
+  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.60 (HORARIOS DE DESPERTAR POR DIA) ==="));
   Serial.print(F("12-hour sleep configurado a: "));
   Serial.print(DOCE_HORAS_QUINCE_MIN_MS / 1000 / 60 / 60.0, 2);
   Serial.println(F(" horas totales (12h + 15min transición)"));
@@ -514,8 +689,8 @@ void setup() {
   Serial.print(F("  Umbral siesta/noche: ")); Serial.print(UMBRAL_HORA_SIESTA); Serial.println(F(":00 (5:00 PM)"));
   Serial.println(F("  Hora extra verde tenue: 60 minutos"));
   Serial.println(F("Configuración persistente en EEPROM habilitada"));
-  Serial.println(F("Force Color expandido a 8 opciones con High/Low"));
-  Serial.println(F("Force Color con timeout de 1 hora"));
+  Serial.println(F("Force Color: modo (Off, Persistent, 1 hour, Until event) y color"));
+  Serial.println(F("Force Color incluye All off"));
   Serial.println(F("NUEVO: Pantalla especial para 12-hour sleep + exclusión mutua"));
 }
 
@@ -530,25 +705,13 @@ void loop() {
     Serial.println(F("Force wakeup FINALIZADO - Volviendo a horario normal"));
   }
 
-  // Verificar timeout de Force Color
-  if (forceColor > 0 && millis() >= tiempoInicioForceColor + TIEMPO_FORCE_COLOR_MS) {
-    uint8_t oldForceColor = forceColor;
-    forceColor = 0; // Desactivar
-    Serial.print(F("Force color "));
-    switch(oldForceColor) {
-      case 1: Serial.print(F("Green High")); break;
-      case 2: Serial.print(F("Green Low")); break;
-      case 3: Serial.print(F("Yellow High")); break;
-      case 4: Serial.print(F("Yellow Low")); break;
-      case 5: Serial.print(F("Red High")); break;
-      case 6: Serial.print(F("Red Low")); break;
-    }
-    Serial.println(F(" FINALIZADO - Timeout 1 hora"));
-    
-    // Actualizar pantalla si está en menú principal
-    if (!pantallaApagada && !enMenuSettings && !editandoHora && !enForceColorMenu && !enMenuAbout && !enNapMenu && !enWakeUpMenu && !modoDormirMenuActivo && !modoDoceHorasMenuActivo) {
-      mostrarPantallaPrincipal();
-    }
+  // El modo de 1 hora vuelve solo. Until event vuelve al cambiar la fase.
+  if (forceMode == FORCE_MODE_1HOUR && millis() >= tiempoInicioForceColor + TIEMPO_FORCE_COLOR_MS) {
+    Serial.println(F("Force color FINALIZADO - 1 hora"));
+    terminarForceColor();
+  } else if (forceMode == FORCE_MODE_UNTIL && faseHorario() != faseAlForzar) {
+    Serial.println(F("Force color FINALIZADO - Until event"));
+    terminarForceColor();
   }
 
   if (minuto != ultimoMinutoImpreso) {
@@ -769,14 +932,84 @@ void encenderPantalla() {
   } else if (enNapMenu) {
     mostrarNapMenu();
   } else if (enWakeUpMenu) {
-    if (editandoWakeSlot) {
+    if (wakePantalla == WAKE_EDIT || wakePantalla == WAKE_CONFIRM) {
       mostrarEdicionWake();
+    } else if (wakePantalla == WAKE_SLOT) {
+      mostrarWakeSlotMenu();
     } else {
       mostrarWakeUpMenu();
     }
   } else if (enForceColorMenu) {
     mostrarForceColorMenu();
+  } else if (editandoHora) {
+    mostrarEdicionHora();
   }
+}
+
+void cambiarValorEdicionHora() {
+  if (editandoCampo == 0) {
+    if (editandoReloj) {
+      horaTemporalReloj = (horaTemporalReloj + 1) % 24;
+    } else {
+      horaTemporalDormir = (horaTemporalDormir + 1) % 24;
+    }
+  } else if (editandoReloj && editandoCampo == 2) {
+    diaTemporalReloj = (diaTemporalReloj + 1) % 7;
+  } else if (editandoReloj) {
+    minutosTemporalReloj = (minutosTemporalReloj + 1) % 60;
+  } else {
+    minutosTemporalDormir = (minutosTemporalDormir + 5) % 60;
+  }
+}
+
+void avanzarCampoEdicionHora() {
+  uint8_t ultimoCampo = editandoReloj ? 2 : 1;
+  if (editandoCampo < ultimoCampo) {
+    editandoCampo++;
+  } else {
+    confirmandoEdicionHora = true;
+    horaConfirmOpcion = 0;
+  }
+}
+
+void salirEdicionHora() {
+  editandoHora = false;
+  editandoReloj = false;
+  editandoCampo = 0;
+  confirmandoEdicionHora = false;
+  enMenuSettings = true;
+  mostrarMenuSettings();
+}
+
+void guardarEdicionHora() {
+  if (editandoReloj) {
+    // La hora y el día se escriben juntos en el RTC.
+    // dayOfTheWeek() sale de la fecha, así que se corre 0-6 días.
+    uint8_t diaActual = now.dayOfTheWeek();
+    uint8_t delta = (uint8_t)((diaTemporalReloj - diaActual + 7) % 7);
+    DateTime nuevaHora = DateTime(now.year(), now.month(), now.day(),
+                                  horaTemporalReloj, minutosTemporalReloj, 0);
+    nuevaHora = nuevaHora + TimeSpan(delta, 0, 0, 0);
+    rtc.adjust(nuevaHora);
+    Serial.print(F("RTC ajustado a: "));
+    Serial.print(nuevaHora.year());
+    Serial.print(F("-"));
+    Serial.print(nuevaHora.month());
+    Serial.print(F("-"));
+    Serial.print(nuevaHora.day());
+    Serial.print(F(" "));
+    Serial.print(getWeekdayFullName(nuevaHora.dayOfTheWeek()));
+    Serial.print(F(" "));
+    Serial.print(horaTemporalReloj);
+    Serial.print(F(":"));
+    if (minutosTemporalReloj < 10) Serial.print(F("0"));
+    Serial.println(minutosTemporalReloj);
+  } else {
+    horaDormir = horaTemporalDormir;
+    minutosDormir = minutosTemporalDormir;
+    guardarHorariosEnEEPROM();
+  }
+  salirEdicionHora();
 }
 
 void procesarBotonSelect() {
@@ -790,106 +1023,28 @@ void procesarBotonSelect() {
     mostrarMenuSettings();
   }
   else if (enForceColorMenu) {
-    // Menú Force color EXPANDIDO (8 opciones)
-    switch(forceColorOpcion) {
-      case 0: // Green High
-        forceColor = 1;
-        tiempoInicioForceColor = millis(); // Registrar tiempo de inicio
-        enForceColorMenu = false;
-        mostrarPantallaPrincipal();
-        break;
-      case 1: // Green Low
-        forceColor = 2;
-        tiempoInicioForceColor = millis(); // Registrar tiempo de inicio
-        enForceColorMenu = false;
-        mostrarPantallaPrincipal();
-        break;
-      case 2: // Yellow High
-        forceColor = 3;
-        tiempoInicioForceColor = millis(); // Registrar tiempo de inicio
-        enForceColorMenu = false;
-        mostrarPantallaPrincipal();
-        break;
-      case 3: // Yellow Low
-        forceColor = 4;
-        tiempoInicioForceColor = millis(); // Registrar tiempo de inicio
-        enForceColorMenu = false;
-        mostrarPantallaPrincipal();
-        break;
-      case 4: // Red High
-        forceColor = 5;
-        tiempoInicioForceColor = millis(); // Registrar tiempo de inicio
-        enForceColorMenu = false;
-        mostrarPantallaPrincipal();
-        break;
-      case 5: // Red Low
-        forceColor = 6;
-        tiempoInicioForceColor = millis(); // Registrar tiempo de inicio
-        enForceColorMenu = false;
-        mostrarPantallaPrincipal();
-        break;
-      case 6: // Off
-        forceColor = 0;
-        enForceColorMenu = false;
-        mostrarPantallaPrincipal();
-        break;
-      case 7: // Back
-        enForceColorMenu = false;
-        mostrarPantallaPrincipal();
-        break;
-    }
+    procesarBotonSelectForceColor();
   }
   else if (enWakeUpMenu) {
     procesarBotonSelectWakeMenu();
   }
   else if (editandoHora) {
-    if (editandoReloj && editandoCampo < 2) {
-      editandoCampo++; // hora -> minutos -> día
-      mostrarEdicionHora();
-    } else if (!editandoReloj && editandoCampo == 0) {
-      editandoCampo = 1; // Cambiar a editar minutos
-      mostrarEdicionHora();
-    } else {
-      // Guardar y salir al presionar Select en el último campo
-      if (editandoReloj) {
-        // La hora y el día se escriben juntos en el RTC.
-        // dayOfTheWeek() sale de la fecha, así que se corre 0-6 días.
-        uint8_t diaActual = now.dayOfTheWeek();
-        uint8_t delta = (uint8_t)((diaTemporalReloj - diaActual + 7) % 7);
-        DateTime nuevaHora = DateTime(now.year(), now.month(), now.day(),
-                                      horaTemporalReloj, minutosTemporalReloj, 0);
-        nuevaHora = nuevaHora + TimeSpan(delta, 0, 0, 0);
-        rtc.adjust(nuevaHora);
-        Serial.print(F("RTC ajustado a: "));
-        Serial.print(nuevaHora.year());
-        Serial.print(F("-"));
-        Serial.print(nuevaHora.month());
-        Serial.print(F("-"));
-        Serial.print(nuevaHora.day());
-        Serial.print(F(" "));
-        Serial.print(getWeekdayFullName(nuevaHora.dayOfTheWeek()));
-        Serial.print(F(" "));
-        Serial.print(horaTemporalReloj);
-        Serial.print(F(":"));
-        if (minutosTemporalReloj < 10) Serial.print(F("0"));
-        Serial.println(minutosTemporalReloj);
+    if (confirmandoEdicionHora) {
+      if (horaConfirmOpcion == 0) {
+        guardarEdicionHora();
       } else {
-        // Guardar Sleep at en EEPROM
-        guardarHorariosEnEEPROM();
+        salirEdicionHora();
       }
-      
-      editandoHora = false;
-      editandoReloj = false;
-      editandoCampo = 0;
-      enMenuSettings = true;
-      mostrarMenuSettings();
       return;
     }
+    cambiarValorEdicionHora();
+    mostrarEdicionHora();
   }
   else if (enMenuSettings) {
     if (settingOpcion == 0) { // Wake up
       enWakeUpMenu = true;
-      editandoWakeSlot = false;
+      agregandoWake = false;
+      wakePantalla = WAKE_LISTA;
       wakeMenuOpcion = 0;
       wakeScrollOffset = 0;
       mostrarWakeUpMenu();
@@ -898,6 +1053,9 @@ void procesarBotonSelect() {
       editandoHora = true;
       editandoReloj = false;
       editandoCampo = 0;
+      confirmandoEdicionHora = false;
+      horaTemporalDormir = horaDormir;
+      minutosTemporalDormir = minutosDormir;
       mostrarEdicionHora();
     }
     else if (settingOpcion == 2) { // Nap
@@ -905,6 +1063,7 @@ void procesarBotonSelect() {
       napMenuOpcion = 0;
       napEditando = false;
       napEditandoCampo = 0;
+      napConfirmando = false;
       napEditandoStart = true;
       mostrarNapMenu();
     }
@@ -912,6 +1071,7 @@ void procesarBotonSelect() {
       editandoHora = true;
       editandoReloj = true;
       editandoCampo = 0;
+      confirmandoEdicionHora = false;
       // Usamos las variables temporales para no tocar los horarios guardados
       horaTemporalReloj = now.hour();
       minutosTemporalReloj = now.minute();
@@ -1047,6 +1207,7 @@ void procesarBotonSelect() {
     }
     else if (opcionSeleccionada == 2) { // Force color
       enForceColorMenu = true;
+      forceColorPantalla = FC_ROOT;
       forceColorOpcion = 0;
       mostrarForceColorMenu();
     }
@@ -1072,115 +1233,155 @@ void procesarBotonSelect() {
   ultimaInteraccion = millis();
 }
 
+void guardarEdicionNap() {
+  if (napEditandoStart) {
+    napHoraInicio = napHoraTemporal;
+    napMinutoInicio = napMinutoTemporal;
+  } else {
+    napDuracionHoras = napDuracionHorasTemporal;
+    napDuracionMinutos = napDuracionMinutosTemporal;
+  }
+  guardarNapConfigEnEEPROM();
+  napEditando = false;
+  napConfirmando = false;
+  napEditandoCampo = 0;
+  mostrarNapMenu();
+}
+
+void cancelarEdicionNap() {
+  napEditando = false;
+  napConfirmando = false;
+  napEditandoCampo = 0;
+  mostrarNapMenu();
+}
+
+void cambiarValorEdicionNap() {
+  if (napEditandoStart) {
+    if (napEditandoCampo == 0) {
+      napHoraTemporal = (napHoraTemporal + 1) % 24;
+    } else {
+      napMinutoTemporal = (napMinutoTemporal + 5) % 60;
+    }
+  } else if (napEditandoCampo == 0) {
+    napDuracionHorasTemporal = (napDuracionHorasTemporal + 1) % 4;
+  } else {
+    napDuracionMinutosTemporal = (napDuracionMinutosTemporal + 5) % 60;
+  }
+}
+
 void procesarBotonSelectNapMenu() {
   if (napEditando) {
-    // Estamos editando los horarios
-    if (napEditandoCampo == 0) {
-      napEditandoCampo = 1; // Cambiar a editar minutos
-    } else {
-      // Último campo (minutos), salir del modo edición
-      napEditando = false;
-      napEditandoCampo = 0;
-      
-      // Guardar en EEPROM si estamos editando Start o Duration
-      guardarNapConfigEnEEPROM();
-      
-      // Regresar a la opción que estábamos editando
-      if (napEditandoStart) {
-        napMenuOpcion = 1; // Volver a Start
+    if (napConfirmando) {
+      if (napConfirmOpcion == 0) {
+        guardarEdicionNap();
       } else {
-        napMenuOpcion = 2; // Volver a Duration
+        cancelarEdicionNap();
       }
+      return;
     }
-  } else {
-    // No estamos editando, estamos en el menú principal
-    switch (napMenuOpcion) {
-      case 0: // Nap toggle
-        napActivo = !napActivo;
-        // Guardar estado en EEPROM inmediatamente
-        guardarNapConfigEnEEPROM();
-        Serial.print(F("Nap "));
-        Serial.println(napActivo ? F("ACTIVADO") : F("DESACTIVADO"));
-        break;
-      case 1: // Start - Entrar a editar hora de inicio
-        napEditando = true;
-        napEditandoStart = true;
-        napEditandoCampo = 0; // Comenzar con la hora
-        break;
-      case 2: // Duration - Entrar a editar duración
-        napEditando = true;
-        napEditandoStart = false;
-        napEditandoCampo = 0; // Comenzar con las horas
-        break;
-      case 3: // Back - Volver a Settings
-        enNapMenu = false;
-        enMenuSettings = true;
-        mostrarMenuSettings();
-        return; // Salir para que no se muestre el menú Nap
-    }
+    cambiarValorEdicionNap();
+    mostrarNapMenu();
+    return;
+  }
+
+  switch (napMenuOpcion) {
+    case 0: // Mode
+      napActivo = !napActivo;
+      guardarNapConfigEnEEPROM();
+      Serial.print(F("Nap "));
+      Serial.println(napActivo ? F("ACTIVADO") : F("DESACTIVADO"));
+      break;
+    case 1: // Hour
+      napEditando = true;
+      napEditandoStart = true;
+      napConfirmando = false;
+      napEditandoCampo = 0;
+      napHoraTemporal = napHoraInicio;
+      napMinutoTemporal = napMinutoInicio;
+      break;
+    case 2: // Duration
+      napEditando = true;
+      napEditandoStart = false;
+      napConfirmando = false;
+      napEditandoCampo = 0;
+      napDuracionHorasTemporal = napDuracionHoras;
+      napDuracionMinutosTemporal = napDuracionMinutos;
+      break;
+    case 3: // Back
+      enNapMenu = false;
+      enMenuSettings = true;
+      mostrarMenuSettings();
+      return;
   }
   mostrarNapMenu();
 }
 
-void procesarBotonSelectWakeMenu() {
-  if (editandoWakeSlot) {
-    if (wakeEditCampo < 2) {
-      wakeEditCampo++;
-      mostrarEdicionWake();
-      return;
-    }
-
-    if (agregandoWake) {
-      if (wakeCount < MAX_WAKE_SLOTS) {
-        wakeHora[wakeCount] = wakeEditHora;
-        wakeMinutos[wakeCount] = wakeEditMinutos;
-        wakeRango[wakeCount] = wakeEditRango;
-        wakeMenuOpcion = wakeCount;
-        wakeCount++;
-      }
-    } else if (wakeEditIndex < wakeCount) {
-      wakeHora[wakeEditIndex] = wakeEditHora;
-      wakeMinutos[wakeEditIndex] = wakeEditMinutos;
-      wakeRango[wakeEditIndex] = wakeEditRango;
-    }
-
-    guardarWakeEnEEPROM();
-    editandoWakeSlot = false;
-    agregandoWake = false;
-    wakeEditCampo = 0;
-    wakeScrollOffset = (wakeMenuOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
-    mostrarWakeUpMenu();
-    return;
-  }
-
-  uint8_t total = totalOpcionesWakeMenu();
-  if (wakeMenuOpcion < wakeCount) {
-    wakeEditIndex = wakeMenuOpcion;
-    wakeEditHora = wakeHora[wakeEditIndex];
-    wakeEditMinutos = wakeMinutos[wakeEditIndex];
-    wakeEditRango = wakeRango[wakeEditIndex];
-    agregandoWake = false;
-    editandoWakeSlot = true;
-    wakeEditCampo = 0;
-    mostrarEdicionWake();
-  } else if (wakeCount < MAX_WAKE_SLOTS && wakeMenuOpcion == wakeCount) {
+void empezarEdicionWake(bool nuevo) {
+  if (nuevo) {
+    uint8_t libre = primerSlotWakeLibre();
+    if (libre == 0xFF) return;
+    wakeEditIndex = libre;
     wakeEditHora = DEFAULT_HORA_DESPERTAR;
     wakeEditMinutos = DEFAULT_MINUTOS_DESPERTAR;
     wakeEditRango = DAY_ALL;
-    agregandoWake = true;
-    editandoWakeSlot = true;
-    wakeEditCampo = 0;
-    mostrarEdicionWake();
-  } else if (wakeMenuOpcion == total - 1) {
-    enWakeUpMenu = false;
-    editandoWakeSlot = false;
-    enMenuSettings = true;
-    mostrarMenuSettings();
+  } else {
+    wakeEditHora = wakeHora[wakeEditIndex];
+    wakeEditMinutos = wakeMinutos[wakeEditIndex];
+    wakeEditRango = wakeRango[wakeEditIndex];
+  }
+  agregandoWake = nuevo;
+  wakeEditCampo = 0;
+  wakePantalla = WAKE_EDIT;
+  mostrarEdicionWake();
+}
+
+void guardarEdicionWake() {
+  wakeHora[wakeEditIndex] = wakeEditHora;
+  wakeMinutos[wakeEditIndex] = wakeEditMinutos;
+  wakeRango[wakeEditIndex] = wakeEditRango;
+  wakeOcupado |= (uint8_t)(1 << wakeEditIndex);
+  guardarWakeEnEEPROM();
+  agregandoWake = false;
+  wakeEditCampo = 0;
+  wakePantalla = WAKE_LISTA;
+  seleccionarSlotEnLista(wakeEditIndex);
+  mostrarWakeUpMenu();
+}
+
+void cancelarEdicionWake() {
+  bool eraNuevo = agregandoWake;
+  agregandoWake = false;
+  wakeEditCampo = 0;
+  if (eraNuevo) {
+    wakePantalla = WAKE_LISTA;
+    mostrarWakeUpMenu();
+  } else {
+    wakePantalla = WAKE_SLOT;
+    wakeSlotMenuOpcion = 0;
+    mostrarWakeSlotMenu();
   }
 }
 
-void procesarBotonMoveWakeMenu() {
-  if (editandoWakeSlot) {
+void borrarSlotWake() {
+  uint8_t slot = wakeEditIndex;
+  wakeOcupado &= (uint8_t)~(1 << slot);
+  guardarWakeEnEEPROM();
+  wakePantalla = WAKE_LISTA;
+  seleccionarFilaTrasBorrar(slot);
+  mostrarWakeUpMenu();
+}
+
+void procesarBotonSelectWakeMenu() {
+  if (wakePantalla == WAKE_CONFIRM) {
+    if (wakeConfirmOpcion == 0) {
+      guardarEdicionWake();
+    } else {
+      cancelarEdicionWake();
+    }
+    return;
+  }
+
+  if (wakePantalla == WAKE_EDIT) {
     if (wakeEditCampo == 0) {
       wakeEditHora = (wakeEditHora + 1) % 24;
     } else if (wakeEditCampo == 1) {
@@ -1189,6 +1390,60 @@ void procesarBotonMoveWakeMenu() {
       wakeEditRango = (wakeEditRango + 1) % DAY_RANGE_COUNT;
     }
     mostrarEdicionWake();
+    return;
+  }
+
+  if (wakePantalla == WAKE_SLOT) {
+    if (wakeSlotMenuOpcion == 0) {
+      empezarEdicionWake(false);
+    } else if (wakeSlotMenuOpcion == 1) {
+      borrarSlotWake();
+    } else {
+      wakePantalla = WAKE_LISTA;
+      mostrarWakeUpMenu();
+    }
+    return;
+  }
+
+  uint8_t total = totalOpcionesWakeMenu();
+  uint8_t slot = slotDeOpcionWake(wakeMenuOpcion);
+  if (slot != 0xFF) {
+    wakeEditIndex = slot;
+    wakeSlotMenuOpcion = 0;
+    wakePantalla = WAKE_SLOT;
+    mostrarWakeSlotMenu();
+  } else if (contarSlotsWake() < MAX_WAKE_SLOTS && wakeMenuOpcion == contarSlotsWake()) {
+    empezarEdicionWake(true);
+  } else if (wakeMenuOpcion == total - 1) {
+    enWakeUpMenu = false;
+    agregandoWake = false;
+    wakePantalla = WAKE_LISTA;
+    enMenuSettings = true;
+    mostrarMenuSettings();
+  }
+}
+
+void procesarBotonMoveWakeMenu() {
+  if (wakePantalla == WAKE_CONFIRM) {
+    wakeConfirmOpcion = (wakeConfirmOpcion + 1) % 2;
+    mostrarEdicionWake();
+    return;
+  }
+
+  if (wakePantalla == WAKE_EDIT) {
+    if (wakeEditCampo < 2) {
+      wakeEditCampo++;
+    } else {
+      wakePantalla = WAKE_CONFIRM;
+      wakeConfirmOpcion = 0;
+    }
+    mostrarEdicionWake();
+    return;
+  }
+
+  if (wakePantalla == WAKE_SLOT) {
+    wakeSlotMenuOpcion = (wakeSlotMenuOpcion + 1) % 3;
+    mostrarWakeSlotMenu();
     return;
   }
 
@@ -1208,30 +1463,17 @@ void procesarBotonMove() {
   }
   else if (enForceColorMenu) {
     // Navegación en Force color menu expandido
-    forceColorOpcion = (forceColorOpcion + 1) % totalForceColorOpciones;
+    forceColorOpcion = (forceColorOpcion + 1) % totalOpcionesForceColor();
     mostrarForceColorMenu();
   }
   else if (enWakeUpMenu) {
     procesarBotonMoveWakeMenu();
   }
   else if (editandoHora) {
-    if (editandoCampo == 0) { // Editando hora
-      if (editandoReloj) {
-        // Para el reloj: incrementar hora normalmente usando variables temporales
-        horaTemporalReloj = (horaTemporalReloj + 1) % 24;
-      } else {
-        horaDormir = (horaDormir + 1) % 24;
-      }
-    } else if (editandoReloj && editandoCampo == 2) {
-      diaTemporalReloj = (diaTemporalReloj + 1) % 7;
-    } else { // Editando minutos
-      if (editandoReloj) {
-        // Para el reloj: incrementar minuto a minuto usando variables temporales
-        minutosTemporalReloj = (minutosTemporalReloj + 1) % 60;
-      } else {
-        // Para sleep: incrementar de 5 en 5 minutos
-        minutosDormir = (minutosDormir + 5) % 60;
-      }
+    if (confirmandoEdicionHora) {
+      horaConfirmOpcion = (horaConfirmOpcion + 1) % 2;
+    } else {
+      avanzarCampoEdicionHora();
     }
     mostrarEdicionHora();
   }
@@ -1263,28 +1505,15 @@ void procesarBotonMove() {
 
 void procesarBotonMoveNapMenu() {
   if (napEditando) {
-    // Estamos editando los horarios
-    if (napEditandoStart) {
-      // Editando START
-      if (napEditandoCampo == 0) {
-        // Editando hora de inicio
-        napHoraInicio = (napHoraInicio + 1) % 24;
-      } else {
-        // Editando minuto de inicio (de 5 en 5 minutos)
-        napMinutoInicio = (napMinutoInicio + 5) % 60;
-      }
+    if (napConfirmando) {
+      napConfirmOpcion = (napConfirmOpcion + 1) % 2;
+    } else if (napEditandoCampo == 0) {
+      napEditandoCampo = 1;
     } else {
-      // Editando DURATION
-      if (napEditandoCampo == 0) {
-        // Editando horas de duración (0-3)
-        napDuracionHoras = (napDuracionHoras + 1) % 4;
-      } else {
-        // Editando minutos de duración (de 5 en 5 minutos)
-        napDuracionMinutos = (napDuracionMinutos + 5) % 60;
-      }
+      napConfirmando = true;
+      napConfirmOpcion = 0;
     }
   } else {
-    // No estamos editando horarios, cambiar entre opciones del menú
     napMenuOpcion = (napMenuOpcion + 1) % napTotalOpciones;
   }
   mostrarNapMenu();
@@ -1300,40 +1529,15 @@ void manejarLuces() {
     modoDoceHorasMenuActivo = false;
   }
 
-  // 0. FORCE WAKEUP tiene prioridad máxima
-  if (forceWakeupActivo) {
-    setLuz(ledVerde, intensidadVerdeTenue);
+  // Force color activo queda fijo hasta que su modo termine.
+  if (forceMode != FORCE_MODE_OFF) {
+    aplicarColorForzado();
     return;
   }
 
-  // 1. FORCE COLOR tiene prioridad máxima (AHORA CON 7 OPCIONES)
-  if (forceColor > 0) {
-    switch(forceColor) {
-      case 1: // Green High
-        setLuz(ledVerde, intensidadVerdeMax);
-        break;
-      case 2: // Green Low
-        setLuz(ledVerde, intensidadVerdeTenue);
-        break;
-      case 3: // Yellow High
-        setLuz(ledAmarillo, intensidadAmarilloMax);
-        break;
-      case 4: // Yellow Low
-        setLuz(ledAmarillo, intensidadAmarilloTenue);
-        break;
-      case 5: // Red High
-        setLuz(ledRojo, intensidadRojoMax);
-        break;
-      case 6: // Red Low
-        setLuz(ledRojo, intensidadRojoTenue);
-        break;
-      default: // Off o cualquier otro valor
-        // Apagar todas las luces
-        digitalWrite(ledVerde, LOW);
-        digitalWrite(ledAmarillo, LOW);
-        digitalWrite(ledRojo, LOW);
-        break;
-    }
+  // Force wakeup
+  if (forceWakeupActivo) {
+    setLuz(ledVerde, intensidadVerdeTenue);
     return;
   }
 
@@ -1550,7 +1754,7 @@ void mostrarPantallaPrincipal() {
         
       case 2: // Force color
         oled.print("Force color [");
-        oled.print(getForceColorTexto(forceColor));
+        oled.print(etiquetaCortaForce());
         oled.println("]");
         break;
         
@@ -1576,7 +1780,11 @@ void mostrarPantallaPrincipal() {
   oled.print(opcionSeleccionada + 1);
   oled.print("/");
   oled.print(totalOpciones);
-  oled.println("          Select");
+  if (opcionSeleccionada == 2 || opcionSeleccionada == 4) {
+    oled.println("          Select");
+  } else {
+    oled.println("          Toggle");
+  }
 }
 
 // Pantalla especial cuando Sleep mode está activo
@@ -1697,14 +1905,25 @@ void mostrarMenuSettings() {
     }
     
     switch(i) {
-      case 0: // Wake up
-        if (wakeCount <= 1) {
+      case 0: { // Wake up
+        uint8_t nWake = contarSlotsWake();
+        if (nWake == 0) {
+          oled.print("Wake up");
+        } else if (nWake == 1) {
+          uint8_t slot = 0;
+          for (uint8_t s = 0; s < MAX_WAKE_SLOTS; s++) {
+            if (slotWakeOcupado(s)) {
+              slot = s;
+              break;
+            }
+          }
           oled.print("Wake up ");
-          imprimirHoraConRango(wakeHora[0], wakeMinutos[0], wakeRango[0]);
+          imprimirHoraConRango(wakeHora[slot], wakeMinutos[slot], wakeRango[slot]);
         } else {
           oled.print("Wake up (custom)");
         }
         break;
+      }
         
       case 1: // Sleep at
         oled.print("Sleep ");
@@ -1758,128 +1977,98 @@ void mostrarMenuSettings() {
 
 void mostrarNapMenu() {
   oled.clear();
-  // Título
-  oled.println(" NAP SETUP");
-  
+
   if (napEditando) {
-    // MODO EDICIÓN
+    oled.println(napEditandoStart ? " HOUR" : " DURATION");
+
+    if (napConfirmando) {
+      oled.print(napConfirmOpcion == 0 ? ">" : " ");
+      oled.println("Save");
+      oled.print(napConfirmOpcion == 1 ? ">" : " ");
+      oled.println("Cancel");
+      oled.print(" Move ");
+      oled.print(napConfirmOpcion + 1);
+      oled.print("/2");
+      oled.println("          Select");
+      return;
+    }
+
     if (napEditandoStart) {
-      // Editando START
-      oled.print(" Nap [");
-      oled.print(napActivo ? "On" : "Off");
-      oled.println("]");
-      
-      oled.print(" Start: ");
-      if (napEditandoCampo == 0) {
-        oled.print(">");
-      } else {
-        oled.print(" ");
-      }
-      oled.print(napHoraInicio);
+      oled.print(napEditandoCampo == 0 ? ">" : " ");
+      oled.print(napHoraTemporal);
       oled.print(":");
-      
-      if (napEditandoCampo == 1) {
-        oled.print(">");
-      } else {
-        oled.print(" ");
-      }
-      if (napMinutoInicio < 10) oled.print("0");
-      oled.print(napMinutoInicio);
+      if (napEditandoCampo == 1) oled.print(">");
+      if (napMinutoTemporal < 10) oled.print("0");
+      oled.print(napMinutoTemporal);
       oled.println();
-      
-      oled.println();
-      oled.print(" Change            Apply");
     } else {
-      // Editando DURATION
-      oled.print(" Duration: ");
-      if (napEditandoCampo == 0) {
-        oled.print(">");
-      } else {
-        oled.print(" ");
-      }
-      oled.print(napDuracionHoras);
+      if (napEditandoCampo == 0) oled.print(">");
+      else oled.print(" ");
+      oled.print(napDuracionHorasTemporal);
       oled.print("h ");
-      
-      if (napEditandoCampo == 1) {
-        oled.print(">");
-      } else {
-        oled.print(" ");
-      }
-      if (napDuracionMinutos < 10) oled.print("0");
-      oled.print(napDuracionMinutos);
+      if (napEditandoCampo == 1) oled.print(">");
+      if (napDuracionMinutosTemporal < 10) oled.print("0");
+      oled.print(napDuracionMinutosTemporal);
       oled.print("m");
       oled.println();
-      
-      oled.println(" Back");
-      oled.println();
-      oled.print(" Change            Apply");
     }
-    
-  } else {
-    // MODO NORMAL DEL MENÚ
-    // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
-    uint8_t opcionInicial = (napMenuOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
-    uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, napTotalOpciones);
-    
-    // Mostrar las opciones correspondientes
-    for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
-      if (i == napMenuOpcion) {
-        oled.print(">");
-      } else {
-        oled.print(" ");
-      }
-      
-      switch(i) {
-        case 0: // Nap toggle
-          oled.print( "Nap [");
-          oled.print(napActivo ? "On" : "Off");
-          oled.println("]");
-          break;
-          
-        case 1: // Start
-          oled.print(" Start: ");
-          oled.print(napHoraInicio);
-          oled.print(":");
-          if (napMinutoInicio < 10) oled.print("0");
-          oled.print(napMinutoInicio);
-          oled.println();
-          break;
-          
-        case 2: // Duration
-          oled.print(" Duration: ");
-          oled.print(napDuracionHoras);
-          oled.print("h ");
-          if (napDuracionMinutos < 10) oled.print("0");
-          oled.print(napDuracionMinutos);
-          oled.print("m");
-          oled.println();
-          break;
-          
-        case 3: // Back
-          oled.println(" Back");
-          break;
-      }
-    }
-    
-    // Si hay menos opciones que el máximo, mostrar líneas vacías
-    for (uint8_t i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
-      oled.println();
-    }
-    
-    // Mostrar instrucciones según la opción seleccionada
+
     oled.println();
-    oled.print(" Move ");
-    oled.print(napMenuOpcion + 1);
-    oled.print("/");
-    oled.print(napTotalOpciones);
-    
-    if (napMenuOpcion == 0) {
-      oled.print("          Toggle");
-    } else if (napMenuOpcion == 1 || napMenuOpcion == 2) {
-      oled.print("          Edit");
-    } else if (napMenuOpcion == 3) {
-      oled.print("          Select");
+    oled.println(" Move              Change");
+    return;
+  }
+
+  oled.println(" NAP");
+
+  uint8_t opcionInicial = (napMenuOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+  uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, napTotalOpciones);
+
+  for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
+    oled.print(i == napMenuOpcion ? ">" : " ");
+
+    switch (i) {
+      case 0:
+        oled.print("Mode [");
+        oled.print(napActivo ? "On " : "Off");
+        oled.println("]");
+        break;
+      case 1:
+        oled.print("Hour: ");
+        oled.print(napHoraInicio);
+        oled.print(":");
+        if (napMinutoInicio < 10) oled.print("0");
+        oled.print(napMinutoInicio);
+        oled.println();
+        break;
+      case 2:
+        oled.print("Duration: ");
+        oled.print(napDuracionHoras);
+        oled.print("h ");
+        if (napDuracionMinutos < 10) oled.print("0");
+        oled.print(napDuracionMinutos);
+        oled.print("m");
+        oled.println();
+        break;
+      default:
+        oled.println("Back");
+        break;
     }
+  }
+
+  for (uint8_t i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
+    oled.println();
+  }
+
+  oled.print(" Move ");
+  oled.print(napMenuOpcion + 1);
+  oled.print("/");
+  oled.print(napTotalOpciones);
+  if (napMenuOpcion == 0) {
+    oled.println("          Toggle");
+  } else if (napMenuOpcion == 1 || napMenuOpcion == 2) {
+    oled.println("            Edit");
+  } else {
+    oled.println("          Select");
   }
 }
 
@@ -1890,7 +2079,7 @@ void mostrarMenuAbout() {
   
   // Versión
   oled.print(" Version: ");
-  oled.println("1.47");
+  oled.println("1.60");
 
   // Website
   oled.println(" www.iTronnix.com");
@@ -1899,91 +2088,143 @@ void mostrarMenuAbout() {
   oled.println(".                              Back");
 }
 
+void procesarBotonSelectForceColor() {
+  if (forceColorPantalla == FC_ROOT) {
+    if (forceColorOpcion == 0) {
+      forceColorPantalla = FC_MODE;
+      forceColorOpcion = forceMode;
+    } else if (forceColorOpcion == 1) {
+      forceColorPantalla = FC_COLOR;
+      forceColorOpcion = forceColorSel;
+    } else {
+      enForceColorMenu = false;
+      forceColorPantalla = FC_ROOT;
+      mostrarPantallaPrincipal();
+      return;
+    }
+    mostrarForceColorMenu();
+    return;
+  }
+
+  if (forceColorPantalla == FC_MODE) {
+    if (forceColorOpcion < 4) {
+      forceMode = forceColorOpcion;
+      if (forceMode == FORCE_MODE_1HOUR) {
+        tiempoInicioForceColor = millis();
+      } else if (forceMode == FORCE_MODE_UNTIL) {
+        faseAlForzar = faseHorario();
+      }
+    }
+    forceColorPantalla = FC_ROOT;
+    forceColorOpcion = 0;
+    mostrarForceColorMenu();
+    return;
+  }
+
+  if (forceColorOpcion < 7) {
+    forceColorSel = forceColorOpcion;
+  }
+  forceColorPantalla = FC_ROOT;
+  forceColorOpcion = 1;
+  mostrarForceColorMenu();
+}
+
+void imprimirOpcionForceColor(uint8_t i) {
+  if (forceColorPantalla == FC_MODE) {
+    switch (i) {
+      case 0: oled.println("Off"); break;
+      case 1: oled.println("Persistent"); break;
+      case 2: oled.println("1 hour"); break;
+      case 3: oled.println("Until event"); break;
+      default: oled.println("Back"); break;
+    }
+    return;
+  }
+
+  if (forceColorPantalla == FC_COLOR) {
+    switch (i) {
+      case 0: oled.println("Green Hi"); break;
+      case 1: oled.println("Green Lo"); break;
+      case 2: oled.println("Yellow Hi"); break;
+      case 3: oled.println("Yellow Lo"); break;
+      case 4: oled.println("Red Hi"); break;
+      case 5: oled.println("Red Lo"); break;
+      case 6: oled.println("All off"); break;
+      default: oled.println("Back"); break;
+    }
+    return;
+  }
+
+  switch (i) {
+    case 0:
+      oled.print("Mode [");
+      oled.print(etiquetaModoForce());
+      oled.println("]");
+      break;
+    case 1:
+      oled.print("Color [");
+      oled.print(etiquetaColorForce());
+      oled.println("]");
+      break;
+    default:
+      oled.println("Back");
+      break;
+  }
+}
+
 void mostrarForceColorMenu() {
   oled.clear();
-  // Título
-  oled.println(" FORCE COLOR");
-  
-  // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
-  uint8_t opcionInicial = (forceColorOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
-  uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, totalForceColorOpciones);
-  
-  // Mostrar las opciones correspondientes
-  for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
-    if (i == forceColorOpcion) {
-      oled.print(">");
-    } else {
-      oled.print(" ");
-    }
-    
-    // Mostrar nombres completos en el menú Force Color
-    switch(i) {
-      case 0: // Green high
-        oled.println("Green high");
-        break;
-        
-      case 1: // Green low
-        oled.println("Green low");
-        break;
-        
-      case 2: // Yellow high
-        oled.println("Yellow high");
-        break;
-        
-      case 3: // Yellow low
-        oled.println("Yellow low");
-        break;
-        
-      case 4: // Red high
-        oled.println("Red high");
-        break;
-        
-      case 5: // Red low
-        oled.println("Red low");
-        break;
-        
-      case 6: // Off
-        oled.println("Off");
-        break;
-        
-      case 7: // Back
-        oled.println("Back");
-        break;
-    }
+  if (forceColorPantalla == FC_MODE) {
+    oled.println(" MODE");
+  } else if (forceColorPantalla == FC_COLOR) {
+    oled.println(" COLOR");
+  } else {
+    oled.println(" FORCE COLOR");
   }
-  
-  // Si hay menos opciones que el máximo, mostrar líneas vacías
+
+  uint8_t total = totalOpcionesForceColor();
+  uint8_t opcionInicial = (forceColorOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+  uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, total);
+
+  for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
+    oled.print(i == forceColorOpcion ? ">" : " ");
+    imprimirOpcionForceColor(i);
+  }
+
   for (uint8_t i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
     oled.println();
   }
-  
-  // Navegación con indicador de posición
+
   oled.print(" Move ");
   oled.print(forceColorOpcion + 1);
   oled.print("/");
-  oled.print(totalForceColorOpciones);
-  oled.println("          Select");
+  oled.print(total);
+  if (forceColorPantalla == FC_ROOT) {
+    oled.println("          Select");
+  } else {
+    oled.println("           Apply");
+  }
 }
 
 void mostrarWakeUpMenu() {
   oled.clear();
-  oled.println(" WAKE UP SETUP");
+  oled.println(" WAKEUP");
 
   uint8_t total = totalOpcionesWakeMenu();
+  uint8_t ocupados = contarSlotsWake();
   uint8_t opcionInicial = wakeScrollOffset;
   uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, total);
 
   for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
-    if (i == wakeMenuOpcion) {
-      oled.print(">");
-    } else {
-      oled.print(" ");
-    }
+    oled.print(i == wakeMenuOpcion ? ">" : " ");
 
-    if (i < wakeCount) {
-      oled.print("Edit ");
-      imprimirHoraConRango(wakeHora[i], wakeMinutos[i], wakeRango[i]);
-    } else if (wakeCount < MAX_WAKE_SLOTS && i == wakeCount) {
+    uint8_t slot = slotDeOpcionWake(i);
+    if (slot != 0xFF) {
+      oled.print("Time ");
+      oled.print(slot + 1);
+      oled.print(": ");
+      imprimirHoraConRango(wakeHora[slot], wakeMinutos[slot], wakeRango[slot]);
+    } else if (ocupados < MAX_WAKE_SLOTS && i == ocupados) {
       oled.print("Add new");
     } else {
       oled.print("Back");
@@ -1999,16 +2240,51 @@ void mostrarWakeUpMenu() {
   oled.print(wakeMenuOpcion + 1);
   oled.print("/");
   oled.print(total);
-  if (wakeMenuOpcion == total - 1) {
-    oled.println("          Select");
-  } else {
-    oled.println("           Apply");
+  oled.println("          Select");
+}
+
+void mostrarWakeSlotMenu() {
+  oled.clear();
+  oled.print(" TIME ");
+  oled.println(wakeEditIndex + 1);
+
+  const uint8_t total = 3;
+  uint8_t opcionInicial = (wakeSlotMenuOpcion / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
+  uint8_t opcionFinal = min(opcionInicial + MAX_OPCIONES_POR_PANTALLA, total);
+
+  for (uint8_t i = opcionInicial; i < opcionFinal; i++) {
+    oled.print(i == wakeSlotMenuOpcion ? ">" : " ");
+    if (i == 0) oled.println("Edit");
+    else if (i == 1) oled.println("Delete");
+    else oled.println("Back");
   }
+
+  for (uint8_t i = opcionFinal - opcionInicial; i < MAX_OPCIONES_POR_PANTALLA; i++) {
+    oled.println();
+  }
+
+  oled.print(" Move ");
+  oled.print(wakeSlotMenuOpcion + 1);
+  oled.print("/");
+  oled.print(total);
+  oled.println("          Select");
 }
 
 void mostrarEdicionWake() {
   oled.clear();
-  oled.println(" WAKE UP SETUP");
+  oled.println(agregandoWake ? " ADD NEW" : " EDIT");
+
+  if (wakePantalla == WAKE_CONFIRM) {
+    oled.print(wakeConfirmOpcion == 0 ? ">" : " ");
+    oled.println("Save");
+    oled.print(wakeConfirmOpcion == 1 ? ">" : " ");
+    oled.println("Cancel");
+    oled.print(" Move ");
+    oled.print(wakeConfirmOpcion + 1);
+    oled.print("/2");
+    oled.println("          Select");
+    return;
+  }
 
   if (wakeEditCampo == 0) {
     oled.print(">");
@@ -2031,73 +2307,47 @@ void mostrarEdicionWake() {
   }
   oled.println(getDayRangeLabel(wakeEditRango));
 
-  oled.println(" Change             Apply");
+  oled.println(" Move              Change");
 }
 
 void mostrarEdicionHora() {
   oled.clear();
-  
-  // Título diferente según lo que estemos editando
+
   if (editandoReloj) {
     oled.println(" CLOCK SETUP");
   } else {
-    oled.println(" SLEEP SETUP");
+    oled.println(" SLEEP");
   }
-  
-  // Mostrar hora y minutos con cursor
-  if (editandoCampo == 0) {
-    oled.print(">");
-    if (editandoReloj) {
-      oled.print(horaTemporalReloj);
-    } else {
-      oled.print(horaDormir);
-    }
-  } else {
-    oled.print(" ");
-    if (editandoReloj) {
-      oled.print(horaTemporalReloj);
-    } else {
-      oled.print(horaDormir);
-    }
+
+  if (confirmandoEdicionHora) {
+    oled.print(horaConfirmOpcion == 0 ? ">" : " ");
+    oled.println("Save");
+    oled.print(horaConfirmOpcion == 1 ? ">" : " ");
+    oled.println("Cancel");
+    oled.print(" Move ");
+    oled.print(horaConfirmOpcion + 1);
+    oled.print("/2");
+    oled.println("          Select");
+    return;
   }
-  
+
+  uint8_t hora = editandoReloj ? horaTemporalReloj : horaTemporalDormir;
+  uint8_t minutos = editandoReloj ? minutosTemporalReloj : minutosTemporalDormir;
+
+  oled.print(editandoCampo == 0 ? ">" : " ");
+  oled.print(hora);
   oled.print(":");
-  
-  if (editandoCampo == 1) {
-    oled.print(">");
-    if (editandoReloj) {
-      if (minutosTemporalReloj < 10) oled.print("0");
-      oled.print(minutosTemporalReloj);
-    } else {
-      if (minutosDormir < 10) oled.print("0");
-      oled.print(minutosDormir);
-    }
-  } else {
-    if (editandoReloj) {
-      if (minutosTemporalReloj < 10) oled.print("0");
-      oled.print(minutosTemporalReloj);
-    } else {
-      if (minutosDormir < 10) oled.print("0");
-      oled.print(minutosDormir);
-    }
-  }
-  
+  if (editandoCampo == 1) oled.print(">");
+  if (minutos < 10) oled.print("0");
+  oled.print(minutos);
   oled.println();
+
   if (editandoReloj) {
-    if (editandoCampo == 2) {
-      oled.print(">");
-    } else {
-      oled.print("  ");
-    }
+    oled.print(editandoCampo == 2 ? ">" : " ");
     oled.println(getWeekdayFullName(diaTemporalReloj));
   } else {
     oled.println();
   }
-  
-  // Instrucciones en la parte inferior
-  if (editandoCampo == 0) {
-    oled.println(" Change             Apply");
-  } else {
-    oled.println(" Change              Apply");
-  }
+
+  oled.println(" Move              Change");
 }
