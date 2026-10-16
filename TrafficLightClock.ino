@@ -1,4 +1,4 @@
-// VERSION: 1.60 - Nap Hour y Duration con Save
+// VERSION: 1.62 - About Back a la izquierda
 
 #include <Wire.h>
 #include <RTClib.h>
@@ -10,6 +10,7 @@
 int ultimoMinutoImpreso = -1;
 unsigned long ultimaInteraccion = 0;
 const unsigned long TIEMPO_PANTALLA_ACTIVA = 30000; // 30 segundos
+const unsigned long TIEMPO_OLVIDAR_MENU = 5UL * 60UL * 1000UL; // 5 minutos
 bool pantallaApagada = false;
 unsigned long tiempoEncendidoPantalla = 0; // Para controlar el bloqueo temporal
 const unsigned long TIEMPO_BLOQUEO_BOTONES = 300; // 300ms de bloqueo después de encender
@@ -681,7 +682,7 @@ void setup() {
   mostrarPantallaPrincipal();
   pantallaApagada = false;
   
-  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.60 (HORARIOS DE DESPERTAR POR DIA) ==="));
+  Serial.println(F("=== SISTEMA INICIADO - VERSION 1.62 (HORARIOS DE DESPERTAR POR DIA) ==="));
   Serial.print(F("12-hour sleep configurado a: "));
   Serial.print(DOCE_HORAS_QUINCE_MIN_MS / 1000 / 60 / 60.0, 2);
   Serial.println(F(" horas totales (12h + 15min transición)"));
@@ -692,6 +693,36 @@ void setup() {
   Serial.println(F("Force Color: modo (Off, Persistent, 1 hour, Until event) y color"));
   Serial.println(F("Force Color incluye All off"));
   Serial.println(F("NUEVO: Pantalla especial para 12-hour sleep + exclusión mutua"));
+}
+
+void olvidarMenuInactivo() {
+  if (millis() - ultimaInteraccion <= TIEMPO_OLVIDAR_MENU) return;
+
+  bool enAlgunMenu = enMenuSettings || enMenuAbout || enNapMenu || enWakeUpMenu
+    || enForceColorMenu || editandoHora || modoDormirMenuActivo || modoDoceHorasMenuActivo;
+  if (!enAlgunMenu) return;
+
+  enMenuSettings = false;
+  enMenuAbout = false;
+  enNapMenu = false;
+  napEditando = false;
+  napConfirmando = false;
+  enWakeUpMenu = false;
+  wakePantalla = WAKE_LISTA;
+  agregandoWake = false;
+  enForceColorMenu = false;
+  forceColorPantalla = FC_ROOT;
+  editandoHora = false;
+  editandoReloj = false;
+  confirmandoEdicionHora = false;
+  editandoCampo = 0;
+  modoDormirMenuActivo = false;
+  modoDoceHorasMenuActivo = false;
+  opcionSeleccionada = 0;
+
+  if (!pantallaApagada) {
+    mostrarPantallaPrincipal();
+  }
 }
 
 void loop() {
@@ -741,6 +772,8 @@ void loop() {
     oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
     pantallaApagada = true;
   }
+
+  olvidarMenuInactivo();
 
   delay(100);
 }
@@ -1797,7 +1830,7 @@ void mostrarPantallaDormir() {
   oled.print(":");
   if (now.minute() < 10) oled.print("0");
   oled.print(now.minute());
-  oled.println("              iTronnix");
+  oled.println("  iTronnix");
   
   // Calcular qué opciones mostrar (siempre 2 opciones por pantalla)
   uint8_t opcionInicial = (opcionEspecialSeleccionada / MAX_OPCIONES_POR_PANTALLA) * MAX_OPCIONES_POR_PANTALLA;
@@ -2079,13 +2112,13 @@ void mostrarMenuAbout() {
   
   // Versión
   oled.print(" Version: ");
-  oled.println("1.60");
+  oled.println("1.62");
 
   // Website
   oled.println(" www.iTronnix.com");
-  
+
   // Back
-  oled.println(".                              Back");
+  oled.println(" Back");
 }
 
 void procesarBotonSelectForceColor() {
